@@ -496,31 +496,34 @@ _state: dict = {"window": None, "tray": None, "started_at": None,
 
 
 def _close_hint_once(cfg) -> bool:
-    """点 X 收起窗口时，**第一次**告诉用户它还在后台跑。
+    """点 X 收起窗口时，告诉用户「它还在后台跑」。
 
     为什么要说：用户以为关窗口=退出，结果队列还在跑、托盘里还占着；
     或者反过来，以为还在跑却真退出了（0.2.19 之前的行为就是这个）。
-    只说一次——每次都弹就又变成骚扰了。
+
+    以前是"这辈子只提示一次"（写盘 close_hint_seen.txt）。2026-11-06 收到反馈：
+    「半瓢好像会一直自己启动，我经常关掉它，然后不知道啥时候他又自己打开了，有些困扰」——
+    翻了日志才知道，他第一天关窗时那条提示就没看见（系统通知被静音，日志里是
+    `[notify-suppressed]`），之后再也不提示，于是每次开机自启他都以为是程序自己蹦出来。
+    现在改成**每次启动提示一次**：标记只放内存，重启程序才会再提示。
+    既不会反复骚扰，也不至于让人彻底失明。
     """
+    if _state.get("close_hint_shown"):
+        return False
+    _state["close_hint_shown"] = True
     try:
         base = Path(getattr(cfg, "data_dir", "") or paths.data_dir())
     except Exception:
         base = paths.data_dir()
-    # 两个文件，别混：
-    #   close_hint_seen.txt  真的只提示一次（用户这辈子第一次关窗口）
-    #   close_hint.txt       待展示给面板的记号，用户点「知道了」就删掉
-    seen = base / "state" / "close_hint_seen.txt"
+    # close_hint.txt 是留给面板的记号：用户下次打开面板时能看到「刚才只是收起，
+    # 不是退出」，点「知道了」就删掉。它和上面的"提示过没有"是两件事，别混。
     pending = base / "state" / "close_hint.txt"
     try:
-        if seen.exists():
-            return False
-        seen.parent.mkdir(parents=True, exist_ok=True)
-        stamp = time.strftime("%Y-%m-%d %H:%M")
-        seen.write_text(stamp, encoding="utf-8")
-        pending.write_text(stamp, encoding="utf-8")
-        return True
+        pending.parent.mkdir(parents=True, exist_ok=True)
+        pending.write_text(time.strftime("%Y-%m-%d %H:%M"), encoding="utf-8")
     except OSError:
-        return False
+        pass
+    return True
 
 
 def _confirm_quit(snap: dict) -> bool:

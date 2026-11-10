@@ -114,6 +114,7 @@ class Panel:
         for acc in self._cfg().accounts:
             st = self.store.account(acc.id)
             hit = st.quota_hits[-1] if st.quota_hits else None
+            phase = login_flow.read_phase(self.cfg, acc.id)
             accs.append({
                 "id": acc.id, "name": acc.name, "browser": acc.browser,
                 # today 必须按"今天"算：stat_today 只在下次出图时才跨日归零，
@@ -131,7 +132,11 @@ class Panel:
                 # 被 Cloudflare 挂起的号：面板要说清"为什么这单不动"
                 "paused_min": self._paused_min(acc.id),
                 "last_hit_after_n": hit.get("after_n") if hit else None,
-                "login_phase": login_flow.read_phase(self.cfg, acc.id),
+                # 邮箱：新登录写进 AccountState；老账号从登录 phase 兜底，
+                # 后台补扫线程会陆续把老账号的邮箱补上（见 _scan_emails）。
+                "email": st.login_email or str(phase.get("email") or ""),
+                "browser_running": self._browser_running(acc.id),
+                "login_phase": phase,
             })
         # 在跑的单要单独给：前端原来从"当前页 + 当前筛选"里取，
         # 翻到第二页或筛成"完成"时，顶栏写着在跑 1 而卡片区是空的。
@@ -151,6 +156,7 @@ class Panel:
                 "update": self.update_state(),
                 "data_dir": str(self.cfg.data_dir),
                 "summary": self.store.summary(), "accounts": accs,
+                "idle_recycle_min": self._cfg().idle_recycle_min,
                 "attention": self._attention_cached(),
                 # 第一次收起窗口时桌面端留的记号：下次打开面板时说一句"它还在后台跑"。
                 # 不用系统通知——2026-11-01 用户明确说过通知很打扰。
@@ -446,6 +452,12 @@ class Panel:
         if do == "update_install":
             return self._update_install()
 
+        if do == "autostart_get":
+            return self._autostart_get()
+
+        if do == "autostart_set":
+            return self._autostart_set(bool(body.get("on")))
+
         if do == "config_set":
             from .. import config as cfg_mod
             key = str(body.get("key") or "")
@@ -717,6 +729,8 @@ class Panel:
         acc = self._acc_of({"account": [body.get("account") or ""]})
         if acc is None:
             return {"ok": False, "why": "没有这个账号"}
+        if run_alive(self._cfg(), acc.id) is True:
+            return {"ok": False, "why": "这个号正在出图，等它跑完再关浏览器"}
         flags = 0x08000000 if sys.platform == "win32" else 0
         try:
             r = subprocess.run(self._cli_cmd("browser", "down", acc.id, "--json"),
@@ -1071,6 +1085,35 @@ class Panel:
 
         threading.Thread(target=run, daemon=True, name="update-dl").start()
 
+    def _autostart_get(self) -> dict:
+        """开机自启现在是开是关。
+
+        为什么要有这个接口：2026-11-06 用户反馈「半瓢好像会一直自己启动，
+        我经常关掉它，然后不知道啥时候他又自己打开了，有些困扰」。
+        翻下来是安装时默认开了自启，而**面板里根本没有能关掉它的地方**——
+        用户只能去注册表里找，那等于没给选择。
+        """
+        from .. import autostart
+
+        try:
+            st = autostart.status()
+        except Exception as e:      # noqa: BLE001
+            return {"ok": False, "enabled": False, "why": str(e)}
+        return {"ok": True, "enabled": bool(st.get("enabled")),
+                "target": st.get("target") or "", "exists": bool(st.get("exists"))}
+
+    def _autostart_set(self, on: bool) -> dict:
+        from .. import autostart
+
+        try:
+            if on:
+                autostart.enable()
+            else:
+                autostart.disable()
+        except Exception as e:      # noqa: BLE001
+            return {"ok": False, "enabled": not on, "why": str(e)}
+        return self._autostart_get()
+
     def _update_install(self) -> dict:
         """下载 → 校验 → 静默安装 → 退出本程序（安装程序装完会重新打开半瓢）。"""
         from .. import update
@@ -1151,6 +1194,79 @@ class Panel:
         n = len(crashlog.list_crashes(self.cfg.data_dir))
         self._crash_cache = (now, n)
         return n
+
+    def _browser_running(self, acc_id: str) -> bool:
+        """这个号的浏览器进程还在不在（窗口收起来也算在）。"""
+        try:
+            from .. import platform as plat
+            from ..driver import browser as br
+
+            h = br.read_handle(self._cfg(), acc_id)
+            return bool(h and plat.pid_alive(h.pid))
+        except Exception:
+            return False
+
+    def start_background(self) -> None:
+        """面板启动后的两个后台杂活：补邮箱、按 idle_recycle_min 回收闲置浏览器。"""
+        threading.Thread(target=self._scan_emails, daemon=True,
+                         name="email-scan").start()
+        threading.Thread(target=self._recycle_idle_browsers, daemon=True,
+                         name="idle-recycler").start()
+
+    def _recycle_idle_browsers(self) -> None:
+        """按时关掉闲置的浏览器进程。
+
+        `idle_recycle_min` 以前只显示在 doctor 里，代码根本没执行——用户反馈
+        「浏览器都收了还占不占内存」时，13 个号实际挂了 117 个进程、约 2.5 GB。
+        这里只关：窗口不可见、没在等人登录/看页面、没有出图锁、闲置超过配置时间的。
+        """
+        time.sleep(15.0)
+        while True:
+            try:
+                cfg = self._cfg()
+                from ..driver import browser as br
+
+                names = {a.id: a.name for a in cfg.accounts}
+                closed = br.recycle_idle(
+                    cfg, self.store,
+                    busy=lambda aid: run_alive(cfg, aid) is True)
+                for aid in closed:
+                    print("闲置回收：%s 的浏览器已关（释放内存，下次出图会自动重开）"
+                          % names.get(aid, aid))
+            except Exception:
+                pass
+            time.sleep(60.0)
+
+    def _scan_emails(self) -> None:
+        """给没有邮箱的账号读一次 /api/auth/session。
+
+        新号登录时本来就写 email；老账号（升级前加的、批量导入的）没有。
+        这里只连已经开着的 CDP，**绝不启动浏览器**，也不碰正在出图的号。
+        每 2 分钟扫一次缺邮箱的号，全部补齐后就不再有额外动作。
+        """
+        time.sleep(3.0)
+        while True:
+            try:
+                cfg = self._cfg()
+                for acc in list(cfg.accounts):
+                    st = self.store.account(acc.id)
+                    if st.login_email:
+                        continue
+                    if not self._browser_running(acc.id):
+                        continue
+                    if run_alive(cfg, acc.id) is True:
+                        continue            # 正在出图，别去碰同一个页面
+                    info = login_flow.read_state(acc.port)
+                    email = str((info or {}).get("email") or "").strip()
+                    if not email:
+                        continue
+                    st.login_email = email
+                    st.login = "ok"
+                    st.login_checked_at = time.time()
+                    self.store.save_account(st)
+            except Exception:
+                pass
+            time.sleep(120.0)
 
     def _window_ok(self, acc_id: str):
         """这个号的浏览器有没有窗口。None = 没开（不算故障）。
@@ -1817,7 +1933,16 @@ def make_handler(panel: Panel):
                     _info = panel.media_info(f)
                     if (_info.get("format") or "").upper() == "GIF":
                         ctype = "image/gif"
-                return self._send(200, f.read_bytes(), ctype)
+                # SVG 是 XML + 活跃内容：直接在浏览器打开时可能带 <script>/onload。
+                # 给它一个 sandbox CSP，动效（SMIL/CSS）照跑，脚本一律不执行。
+                # <img> 标签里本来就不执行脚本，这条是给"新标签打开"兜底。
+                _extra = {}
+                if f.suffix.lower() == ".svg":
+                    ctype = "image/svg+xml; charset=utf-8"
+                    _extra = {"Content-Security-Policy":
+                              "sandbox; default-src 'none'; style-src 'unsafe-inline'",
+                              "X-Content-Type-Options": "nosniff"}
+                return self._send(200, f.read_bytes(), ctype, extra=_extra or None)
 
             return self._err(404, "没有这个地址")
 
@@ -1857,7 +1982,9 @@ def serve(cfg: cfg_mod.Config, port: int | None = None, *,
     if port is None:
         port = int(cfg.ui_port or DEFAULT_PORT)
     port = int(port)
-    httpd = _LocalHTTPServer(("127.0.0.1", port), make_handler(Panel(cfg)))
+    panel = Panel(cfg)
+    panel.start_background()
+    httpd = _LocalHTTPServer(("127.0.0.1", port), make_handler(panel))
     actual = httpd.server_address[1]
     # 记下真实端口：端口可能是 0（让系统挑），不写下来外面就找不到面板在哪。
     try:

@@ -2,6 +2,10 @@
 
 单独一个模块，只有一个原因：cdp_run 是"导入即跑"的驱动脚本，
 测试没法 import 它。把纯函数放这里，驱动和测试都能用（2026-11-06）。
+
+SVG 单独一个 ``is_good_svg``：它是 XML 文本，Pillow 打不开，也不能按
+静图的透明底 / 720px 门槛 / 洋红背景去挑刺（2026-11-07）。
+``is_good`` 本体一行没动。
 """
 from __future__ import annotations
 
@@ -35,6 +39,49 @@ def parse_aspect(s):
         return v if v > 0 else None
     except Exception:
         return None
+
+
+def is_good_svg(path, anim=False):
+    """SVG 的质检。返回 ``(ok, note)``，和 ``is_good`` 同形状。
+
+    硬拒只有三条：读不出来、不是合法 XML、根元素不是 <svg>。
+    其余（尺寸小、没写 viewBox、要动效却是静的）只标注不判死——
+    SVG 是文本文件，跟位图不是一套质量标准，额度已经花了就交给主模型判断。
+    """
+    import xml.etree.ElementTree as ET
+
+    try:
+        raw = Path(path).read_bytes()
+    except Exception as e:
+        return False, "读取失败 %s" % e
+    if not raw or len(raw) < 40:
+        return False, "SVG 文件为空或过小"
+    text = raw.decode("utf-8", "replace")
+    try:
+        root = ET.fromstring(text)
+    except Exception as e:
+        # 有些 SVG 带 DOCTYPE / 未声明实体，ET 会拒绝；只要看得出是 svg 就放行
+        if "<svg" not in text.lower()[:4096]:
+            return False, "不是合法 SVG（XML 解析失败：%s）" % str(e)[:60]
+    else:
+        if root.tag.split("}")[-1].lower() != "svg":
+            return False, "根元素不是 <svg>（%s）" % root.tag[:50]
+    from .. import media as _media
+
+    info = _media.probe_svg(path)
+    if not info:
+        return False, "读不出 SVG 头"
+    flags = []
+    if anim and not info.get("svg_animated"):
+        flags.append("要的是会动的 SVG，但拿到的是静态矢量图")
+    elif info.get("svg_animated"):
+        flags.append("SVG 内含动效（SMIL/CSS）")
+    if not info.get("size"):
+        flags.append("没读到 viewBox/尺寸（不影响浏览器渲染）")
+    # 外链脚本在 <img> 里不执行，但交付给别人时该提醒一句
+    if "<script" in text.lower() or "onload=" in text.lower():
+        flags.append("含脚本/事件属性，嵌入网页前请检查")
+    return True, "；".join(flags)
 
 
 def is_good(path, known, want=None, need_alpha=False, anim=False):

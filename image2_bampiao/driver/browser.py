@@ -163,6 +163,22 @@ def alive(cfg: cfg_mod.Config, acc: cfg_mod.Account) -> dict:
     return {"state": "down", "pid": 0, "note": "未启动"}
 
 
+def _next_free_port(cfg: cfg_mod.Config, acc: cfg_mod.Account, limit: int = 10) -> int:
+    """这个账号能换到哪个空端口。找不到返回 0。
+
+    **必须同时避开其他账号的端口**：只判"有没有人监听"是不够的，
+    另一个账号的浏览器没起在跑的时候，它的端口看起来也是空的，
+    换过去等于把冲突从 A 挪到 B，下次开机就轮到 B 起不来。
+    """
+    used = {a.port for a in getattr(cfg, "accounts", []) if a.id != acc.id}
+    for port in range(acc.port + 1, acc.port + 1 + limit):
+        if port in used:
+            continue
+        if not plat.port_open(port):
+            return port
+    return 0
+
+
 # Windows 藏一次就是一个 user32 调用，可以高频；macOS 每次都要起一个 osascript 进程，
 # 50ms 一次等于每秒 20 个进程。而且 mac 是按「整个 App 隐藏」，隐藏后新开的窗口也不会冒出来，
 # 用不着高频盯。
@@ -340,7 +356,24 @@ def _ensure_locked(cfg: cfg_mod.Config, acc: cfg_mod.Account,
             return False, note
 
     if st["state"] == "foreign":
-        raise RuntimeError(st["note"])
+        # 端口被别的程序占着：以前这里直接抛错，用户点「打开浏览器」看着就是"没反应"，
+        # 登录时则报「不是半瓢的实例」——他根本不知道该去关哪个程序（2026-11-06 反馈）。
+        # 现在自动往后挪一个空端口、写回配置，接着起：用户什么都不用管。
+        port = _next_free_port(cfg, acc)
+        if not port:
+            raise RuntimeError(
+                "端口 %d 被别的程序占着，往后 10 个端口也都满了。"
+                "先关掉那个程序（多半是你自己开着的 Chrome 或 Edge）再点一次" % acc.port)
+        old = acc.port
+        acc.port = port
+        try:
+            cfg_mod.set_account_port(cfg.path, acc.id, port)
+        except Exception as e:                  # 写不回配置也要能起，下次再撞就再换
+            log("端口 %d 被占，这次改用 %d（没写回配置：%s）" % (old, port, e))
+        else:
+            log("端口 %d 被别的程序占着，自动改用 %d" % (old, port))
+        _clear_handle(cfg, acc.id)
+        st = {"state": "down", "pid": 0, "note": "换到端口 %d" % port}
     if st["state"] == "reused":
         _clear_handle(cfg, acc.id)          # 只丢记录，不杀任何进程
 
@@ -513,6 +546,48 @@ def keep_hidden(get_cfg, stop: threading.Event, interval: float = _KEEP_POLL) ->
                 warned_err = True
                 log("!! 藏窗口巡逻出错（%s: %s）——窗口可能藏不住"
                     % (type(e).__name__, str(e)[:80]))
+
+
+def recycle_idle(cfg: cfg_mod.Config, store, *, busy=None, now: float | None = None) -> list[str]:
+    """关掉闲置超过 ``cfg.idle_recycle_min`` 的浏览器进程，返回关掉的账号 id。
+
+    用户 2026-11-10 反馈「浏览器都收了，还占不占太多内存？」：收起只是隐藏窗口，
+    Chrome/Edge 的浏览器进程、渲染进程、GPU 进程都还在。实测 13 个号 117 个进程
+    约 2.5 GB。这个函数只碰**窗口不可见、没在等人登录/看页面、没有出图锁、
+    闲置超过配置时间**的实例；下次出图 ensure() 会重新拉起，登录态不丢。
+    """
+    now = time.time() if now is None else now
+    idle_sec = max(1, int(cfg.idle_recycle_min)) * 60
+    out: list[str] = []
+    for acc in list(cfg.accounts):
+        h = read_handle(cfg, acc.id)
+        if not h or not plat.pid_alive(h.pid):
+            continue
+        if _wants_visible(cfg, acc.id):
+            continue
+        try:
+            if plat.window_visible(h.pid):
+                continue            # 用户正开着这个窗口看
+        except Exception:
+            pass
+        if busy is not None:
+            try:
+                if busy(acc.id):
+                    continue        # 正在出图，不能动
+            except Exception:
+                continue            # 判断不了就当在忙，宁可留着
+        try:
+            st = store.account(acc.id)
+            last = max(float(getattr(st, "last_used_at", 0) or 0),
+                       float(h.started_at or 0))
+        except Exception:
+            continue
+        if now - last < idle_sec:
+            continue
+        ok, _note = stop(cfg, acc)
+        if ok:
+            out.append(acc.id)
+    return out
 
 
 def stop_all(cfg: cfg_mod.Config) -> list[str]:

@@ -69,6 +69,8 @@ aside.side{width:184px;flex:none;background:var(--side);border-right:1px solid v
 /* ── 右侧主区 */
 main{flex:1;min-width:0;height:100vh;overflow:auto}
 .page{max-width:960px;margin:0 auto;padding:22px 28px 48px}
+/* 账号多的时候（用户 2026-11-10 反馈：13 个号一屏看不过来）单独放宽，别的页面不动 */
+.page.wide{max-width:1400px}
 .ph{display:flex;align-items:flex-end;gap:12px;padding-bottom:12px;margin-bottom:18px;
   border-bottom:1px solid var(--ink)}
 .ph h1{margin:0;font:700 22px/1.2 var(--serif);letter-spacing:1px}
@@ -226,6 +228,18 @@ textarea:focus,input:focus,select:focus{border-color:var(--ink2)}
 
 /* ── 账号 */
 .accs{display:grid;grid-template-columns:repeat(auto-fill,minmax(270px,1fr));gap:12px}
+/* 账号 >=8 个自动紧凑：同一屏多放几列。窗口收起只是藏起来，进程还占内存，卡片上给「关掉浏览器」 */
+.accs.dense{grid-template-columns:repeat(auto-fill,minmax(205px,1fr));gap:8px}
+.accs.dense .acc{min-height:140px;padding:10px 12px 9px}
+.accs.dense .acc .nm{font-size:13.5px}
+.accs.dense .acc .who{font-size:11.5px}
+.accs.dense .acc .kv{margin:7px 0 6px;padding:5px 6px;gap:3px}
+.accs.dense .acc .kv b{font-size:13px}
+.accs.dense .acc .kv span{font-size:10.5px;line-height:1.3}
+.accs.dense .acc .say{font-size:11.5px;line-height:1.45;margin-bottom:6px}
+.accs.dense .acc .ops{gap:7px;padding-top:5px}
+.accs.dense .acc .ops .btn{padding:2px 7px;font-size:11.5px}
+.accs.dense .acc .ops .lk{font-size:11.5px}
 .acc{background:var(--sheet);border:1px solid var(--line);padding:14px 16px 12px;display:flex;flex-direction:column;min-height:176px;box-shadow:2px 2px 0 rgba(34,31,26,.07)}
 .acc .top{display:flex;align-items:center;gap:8px}
 .acc .nm{font:700 15px/1.3 var(--serif)}
@@ -319,6 +333,18 @@ details.more .in{padding:0 0 14px;font-size:13px;color:var(--ink2);line-height:1
 .dkv dt{color:var(--dim)}.dkv dd{margin:0}
 .dgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:8px}
 .dgrid img{width:100%;aspect-ratio:1;object-fit:cover;border:1px solid var(--line);background:#fff;cursor:zoom-in}
+/* 多图任务的逐张进度：完成的可预览，正在画的转圈，排队的灰着 */
+.pboard{display:grid;grid-template-columns:repeat(auto-fill,minmax(82px,1fr));gap:6px}
+.pcard{background:var(--sheet);border:1px solid var(--line);padding:4px;min-width:0}
+.pcard .ph2{aspect-ratio:1;background:#F2EFE8;display:flex;align-items:center;justify-content:center;
+  font-size:10.5px;color:var(--dim);overflow:hidden;text-align:center;padding:2px}
+.pcard .ph2 img{width:100%;height:100%;object-fit:cover;cursor:zoom-in}
+.pcard.ok{border-color:var(--line2)}
+.pcard.running{border-color:var(--lan);background:var(--lanbg)}
+.pcard.failed{border-color:var(--zhuline);background:#FFF8F5}
+.pcard.queued{opacity:.68}
+.pcard .cap2{display:flex;justify-content:space-between;gap:3px;font-size:10.5px;color:var(--dim);margin-top:3px;white-space:nowrap;overflow:hidden}
+.pcard .cap2 b{font:600 10.5px var(--mono);color:var(--ink2)}
 /* 文本单的回复正文：保留换行，长文可滚动，别把弹层撑爆 */
 .askreply{white-space:pre-wrap;word-break:break-word;font-size:13.5px;line-height:1.75;
   background:#fff;border:1px solid var(--line);border-radius:8px;padding:12px 14px;
@@ -416,6 +442,10 @@ details.more .in{padding:0 0 14px;font-size:13px;color:var(--ink2);line-height:1
 .gifbadge{display:inline-block;font:600 10px/1.5 var(--mono);letter-spacing:.5px;
   padding:0 4px;border-radius:3px;background:var(--zhu);color:#fff;vertical-align:1px;margin-left:5px}
 .gcard .gifbadge{position:absolute;right:6px;top:6px;margin:0}
+/* SVG 角标：矢量文件不是 GIF，别混用同一个红角标 */
+.svgbadge{display:inline-block;font:600 10px/1.5 var(--mono);letter-spacing:.5px;
+  padding:0 4px;border-radius:3px;background:var(--qing);color:#fff;vertical-align:1px;margin-left:5px}
+.gcard .svgbadge{position:absolute;right:6px;top:6px;margin:0}
 #tabJobsN.attn::after{content:"";position:absolute;right:-7px;top:-3px;width:6px;height:6px;
   border-radius:50%;background:var(--zhu)}
 .ledger td.thumbcell{width:48px}
@@ -507,7 +537,7 @@ tr.row:focus-visible{background:var(--zhubg)}
         <div class="agent" id="agent">
       <div class="aMain">
         <button class="btn pri" id="aGlobalOne">交给所有 AI</button>
-        <span class="aHint" id="aHint">Claude Code · Codex · WorkBuddy · opencode · DeepSeek Harness · Gemini</span>
+        <span class="aHint" id="aHint">Claude Code · Codex · WorkBuddy · opencode · DeepSeek Harness · Gemini · Hermes</span>
       </div>
       <div class="aRes" id="aRes"></div>
     </div>
@@ -615,7 +645,7 @@ tr.row:focus-visible{background:var(--zhubg)}
   </section>
 
   <section id="pgAccs" hidden>
-    <div class="ph"><h1>账号</h1></div>
+    <div class="ph"><h1>账号</h1><p id="accHint"></p><div class="act"><button class="btn sm" id="bCloseAccBrowsers" hidden>关掉所有浏览器</button></div></div>
     <div class="accs" id="accs"></div>
   <details class="more" id="pgChats" style="margin-top:22px">
     <summary>清理半瓢在 ChatGPT 里开过的会话</summary>
@@ -671,6 +701,7 @@ tr.row:focus-visible{background:var(--zhubg)}
       <dt>数据目录</dt><dd id="sDir" title="点一下打开这个文件夹" style="cursor:pointer;text-decoration:underline dotted">读取中…</dd>
       <dt>队列</dt><dd id="sPause">–</dd>
       <dt>异常记录</dt><dd id="sCrash" style="cursor:pointer">–</dd>
+      <dt>开机自启</dt><dd><span id="sAuto">读取中…</span>　<button class="lk" id="sAutoTog" disabled>…</button></dd>
       <dt>版本</dt><dd><span id="sVer">读取中…</span>　<button class="lk" id="sCheck">检查更新</button>
         <div id="sUpd" class="upd" hidden></div></dd>
     </dl>
@@ -784,7 +815,7 @@ const NEXT={AUTH_REQUIRED:'去「账号」页点「重新登录」，登好再�
   NO_REF_FILE:'派单时给的参考图路径不存在（文件还没生成好/路径写错），改好文件再投；改提示词没用。',
   BROWSER_LOST:'出图时浏览器被关掉了，重投一次就好；反复出现点左下角「反馈」。'};
 const nextStep=c=>NEXT[c]||'';
-const ITLAB={ok:'完成',failed:'失败',queued:'待跑',skipped:'跳过'};
+const ITLAB={ok:'完成',failed:'失败',running:'出图中',queued:'排队',skipped:'跳过',cancelled:'已停下'};
 const COLORS=['var(--c1)','var(--c2)','var(--c3)','var(--c4)'];
 const store={get:k=>{try{return localStorage.getItem(k)}catch(e){return null}},
              set:(k,v)=>{try{localStorage.setItem(k,v)}catch(e){}}};
@@ -825,6 +856,7 @@ async function loadOverview(){
     $('#tabJobs').setAttribute('aria-label', _n?`任务，${_n} 条待处理`:'任务');
   }catch(e){}
   S.accounts=d.accounts||[];
+  S.idleRecycleMin=d.idle_recycle_min||10;
   S.browsers=d.browsers||[];
   const active=(d.summary.queued||0)+(d.summary.running||0);
   $('#tabJobsN').textContent=active?active:'';
@@ -869,6 +901,8 @@ function accState(a){
 }
 function renderAccounts(list){
   const el=$('#accs');
+  // 账号多时自动紧凑：13 个号按 270px 一列要 5 行，紧凑后 3 行能看全
+  el.classList.toggle('dense', list.length>=8);
   // 新建的号没登上会被后台撤掉：卡片消失时要说一声，不然人以为点了没反应
   if(S.pendingNew && !list.some(a=>a.id===S.pendingNew)){
     toast('这个号没登上，就先不加了。想加再点一次「＋」');
@@ -880,7 +914,7 @@ function renderAccounts(list){
   }
   const cards=list.map(a=>{
     const k=accState(a), ph=a.login_phase||{};
-    const who=ph.email||'';
+    const who=a.email||ph.email||'';
     const brw=a.browser==='chrome'?'Chrome':(a.browser==='edge'?'Edge':esc(a.browser));
     let say='', main='';
     if(k==='wait'){
@@ -903,6 +937,7 @@ function renderAccounts(list){
       +((a.login_phase||{}).phase==='shown'
         ?`<button class="lk" data-hide="${esc(a.id)}">收起浏览器</button>`
         :`<button class="lk" data-show="${esc(a.id)}" title="看看这个号的 ChatGPT 页面；平时它静默在后台">打开浏览器</button>`)
+      +(a.browser_running?`<button class="lk" data-close="${esc(a.id)}" data-name="${esc(a.name)}" title="彻底结束浏览器进程，释放内存；下次出图会自动重开，登录信息不丢">关掉浏览器</button>`:'')
       +(list.length>1?`<button class="lk danger" data-rm="${esc(a.id)}" data-name="${esc(a.name)}">删除</button>`:'');
     return `<div class="acc ${k==='wait'?'wait':''}">
       <div class="top"><span class="st ${k==='ok'?'done':(k==='cool'?'partial':(k==='wait'||k==='lost'?'failed':'queued'))}"></span>
@@ -929,6 +964,27 @@ function renderAccounts(list){
       <img src="/api/browser_icon?b=${b}" alt="" onerror="this.outerHTML='<i>${BN[b][0]}</i>'"><span>${BN[b]}</span></button>`).join('')}</div>
   </div>`);
   el.innerHTML=cards.join('');
+  const runningN=list.filter(a=>a.browser_running).length;
+  const hint=$('#accHint');
+  if(hint) hint.textContent = runningN
+    ? `浏览器开着 ${runningN} 个。收起窗口只是藏起来，进程还在占内存；闲置超过 ${S.idleRecycleMin||10} 分钟会自动关，也可以点「关掉浏览器」立刻释放。`
+    : '浏览器都没开，不占内存。';
+  const allBtn=$('#bCloseAccBrowsers');
+  if(allBtn){
+    allBtn.hidden=!runningN;
+    allBtn.textContent=`关掉所有浏览器（${runningN}）`;
+    allBtn.onclick=async()=>{
+      if(!confirm(`关掉 ${runningN} 个账号的浏览器？下次出图会自动重新打开，登录信息不会丢。`)) return;
+      allBtn.disabled=true;
+      let ok=0;
+      for(const a of list.filter(x=>x.browser_running)){
+        try{ const r=await post({do:'browser_down',account:a.id}); if(r.ok) ok++; }catch(e){}
+      }
+      allBtn.disabled=false;
+      toast(`已关掉 ${ok} 个浏览器`);
+      loadOverview();
+    };
+  }
   $$('#accs [data-new]').forEach(b=>b.onclick=()=>addAccount(b.dataset.new));
   $$('#accs [data-login]').forEach(b=>b.onclick=()=>
     act({do:'login',account:b.dataset.login},b,'正在打开…','登录窗口已弹出，去那个窗口里登'));
@@ -938,6 +994,10 @@ function renderAccounts(list){
     act({do:'browser_show',account:b.dataset.show},b,'正在打开…','浏览器已打开，看完点「收起浏览器」'));
   $$('#accs [data-hide]').forEach(b=>b.onclick=()=>
     act({do:'browser_hide',account:b.dataset.hide},b,'收起中…','已收起，回到后台静默'));
+  $$('#accs [data-close]').forEach(b=>b.onclick=()=>{
+    if(!confirm('关掉「'+(b.dataset.name||'')+'」的浏览器？下次出图会自动重新打开，登录信息不会丢。')) return;
+    act({do:'browser_down',account:b.dataset.close},b,'正在关…','浏览器已关掉');
+  });
   // 改名：不再弹 prompt 对话框，直接在名字上改（回车保存、Esc 取消、点别处也算保存）。
   // S.editing 期间 loadOverview 不重绘账号卡，否则 3 秒一次的轮询会把人打的字冲掉。
   $$('#accs [data-edit]').forEach(b=>b.onclick=e=>{
@@ -1068,7 +1128,7 @@ function row(x){
   return `<tr class="row" data-id="${x.id}" tabindex="0">
     <td class="no">R${x.id}</td>
     ${isAsk?'':`<td class="thumbcell">${thumb}</td>`}
-    <td><div class="rowtitle${x.handled?' dim':''}">${x.tag?`<span class="tg">${esc(x.tag)}</span>`:''}${brief}${x.animated?'<span class="gifbadge">GIF</span>':''}</div>${sub}</td>
+    <td><div class="rowtitle${x.handled?' dim':''}">${x.tag?`<span class="tg">${esc(x.tag)}</span>`:''}${brief}${x.animated?'<span class="gifbadge">GIF</span>':''}${x.svg?`<span class="svgbadge">SVG${x.svg_animated?' 动效':''}</span>`:''}</div>${sub}</td>
     <td class="n">${isAsk?`${x.rendered} 条`:`${x.rendered} / ${x.expected}`}</td>
     <td class="ac">${esc(S.accName[x.ran_on||x.account_id]||x.ran_on||x.account_id)}</td>
     <td class="tm">${fmt(x.created_at)}</td>
@@ -1241,7 +1301,7 @@ function renderGrid(rows, filtered){
                      :`<div class="ph">${phOf(x)}</div>`;
     const k=x.id+':0';
     return `<div class="gcard${S.sel.has(k)?' sel':''}${x.failure_short&&!x.handled?' fail':''}" data-id="${x.id}" data-k="${k}" tabindex="0">
-      ${img}${x.animated?'<span class="gifbadge">GIF</span>':''}<div class="cap"><span>${esc(briefOf(x))}</span><span class="t">${fmt(x.created_at).slice(6)}</span></div></div>`;
+      ${img}${x.animated?'<span class="gifbadge">GIF</span>':''}${x.svg?`<span class="svgbadge">SVG${x.svg_animated?' 动效':''}</span>`:''}<div class="cap"><span>${esc(briefOf(x))}</span><span class="t">${fmt(x.created_at).slice(6)}</span></div></div>`;
   }).join('');
   // 2026-11-04 审计 P1：筛选到没结果时这里是一片白，用户以为面板坏了。
   $('#grid').innerHTML=(failCard+cards)||('<div class="gempty">这个筛选下没有图。'
@@ -1444,6 +1504,20 @@ async function openJob(id, silent){
   const imgs=(x.items||[]).flatMap(i=>i.urls.map(u=>({u,id:i.id})));
   const animN=(x.items||[]).filter(i=>i.media&&i.media.animated&&(i.files||[]).length).length;
   const isAsk=(x.kind==='ask');
+  const _items=x.items||[];
+  const _running=_items.find(i=>i.status==='running');
+  const _doneN=_items.filter(i=>i.status==='ok').length;
+  // 多图单的逐张进度板：完成的有缩略图，正在画的转圈，排队的灰着。
+  // 用户 2026-11-10 反馈「9/9 详情页只看到数字，看不到哪些完成了、哪些在排队」。
+  const _board=(!isAsk&&_items.length>1)?`
+    <div class="sec">这一批<small>已完成 ${_doneN} / ${x.expected}${_running?` · 正在画 ${esc(_running.id)}`:''}</small></div>
+    <div class="pboard">${_items.map(i=>{
+      const cl=i.status==='ok'?'ok':(i.status==='running'?'running':((i.status==='failed'||i.error_code)?'failed':'queued'));
+      const full=(i.urls&&i.urls.length)?i.urls[0]:'';
+      const one=full?`<img src="${i.thumb||full}" data-u="${esc(full)}" alt="${esc(i.id)}">`
+        :`<div class="ph2">${i.status==='running'?'<span class="spin"></span>出图中':(ITLAB[i.status]||i.status)}</div>`;
+      return `<div class="pcard ${cl}">${one}<div class="cap2"><b>${esc(i.id)}</b><span>${ITLAB[i.status]||i.status}</span></div></div>`;
+    }).join('')}</div>`:'';
   $('#dBody').innerHTML=`
     ${failCard(x)}
     ${unsure.length?`<div class="warnbox">${esc(unsure.join(', '))} 发出去之后连接断了，网页那边可能已${isAsk?'经答完':'经出图'}。先去浏览器看一眼：${isAsk?'有回复就别重问':'有图就别重投'}。</div>
@@ -1457,6 +1531,7 @@ async function openJob(id, silent){
       <button class="btn sm" id="dCopyReply" style="margin-top:8px">复制回复</button>`
       :(x.status==='running'?`<div class="sec">回复</div><div class="muted" style="font-size:12.5px">正在等回复…</div>`:'')}`
     :`
+      ${_board}
       <div class="sec">成图<small>${imgs.length} 张${animN?`（含 ${animN} 个动图）`:''}</small></div>
       <div class="dgrid">${imgs.length?imgs.map((o,k)=>`<img src="${o.u}" data-k="${k}" alt="${esc(x.display_brief||x.brief||o.id)}">`).join('')
         :'<div class="muted" style="font-size:12.5px">这一单还没有成图</div>'}</div>`}
@@ -1477,8 +1552,8 @@ async function openJob(id, silent){
     <div class="sec">每一条</div>
     ${(x.items||[]).map(i=>`<div class="shot">
       <div class="r"><span class="i">${esc(i.id)}</span>
-        <span class="st ${i.status==='ok'?'done':(i.status==='failed'||i.error_code?'failed':'queued')}">${ITLAB[i.status]||i.status}</span>
-        <span class="muted" style="font-size:12px">${isAsk?'':esc(i.aspect||'')}${isAsk?'':(i.alpha?' · 透明底':'')}${(!isAsk&&i.refs.length)?' · 参考图 '+i.refs.length:''}${i.media&&i.media.animated?` · 动图 ${i.media.frames} 帧`:''}</span>
+        <span class="st ${i.status==='ok'?'done':(i.status==='running'?'running':(i.status==='failed'||i.error_code?'failed':'queued'))}">${ITLAB[i.status]||i.status}</span>
+        <span class="muted" style="font-size:12px">${isAsk?'':esc(i.aspect||'')}${isAsk?'':(i.alpha?' · 透明底':'')}${(!isAsk&&i.refs.length)?' · 参考图 '+i.refs.length:''}${i.media&&i.media.animated?` · 动图 ${i.media.frames} 帧`:''}${i.media&&i.media.svg?` · SVG 矢量${i.media.svg_animated?'（含动效）':''}`:''}</span>
       </div>
       <div class="p">${esc((i.prompt||'').slice(0,180))}</div>
       ${i.error_code?`<div style="font-size:13px;color:var(--zhu);margin-top:4px" title="${esc(i.note||i.error_code)}">${esc(i.failure?i.failure.short:cname(i.error_code))}${i.reason?' · '+esc(i.reason):''}</div>`:''}
@@ -1505,6 +1580,7 @@ async function openJob(id, silent){
   }
   $$('#dBody [data-act]').forEach(b=>b.onclick=()=>runAct(id,b.dataset.act));
   $$('#dBody .dgrid img').forEach(el=>el.onclick=()=>openLb(imgs.map(o=>o.u),+el.dataset.k));
+  $$('#dBody .pcard img').forEach(el=>el.onclick=()=>openLb([el.dataset.u],0));
   const rt=$('#dRetry');
   if(rt) rt.onclick=()=>act({do:'retry',job:id},rt,(isAsk?'重问中…':'重投中…'),(isAsk?'已重问':'已重投'));
   const dc=$('#dCancel');
@@ -1769,7 +1845,8 @@ $('#bChatDel').onclick=async()=>{
 // 用户要的是"点一下 → 转圈 → 必须回报结果"，不是弹个 toast 说"已装好"。
 // 而且失败要能自证（自动传日志），不然他不知道是软件坏了还是没装成。
 const AI_NAME={claude:'Claude Code',codex:'Codex',workbuddy:'WorkBuddy',
-                opencode:'opencode',gemini:'Gemini CLI',dsh:'DeepSeek Harness'};
+                opencode:'opencode',gemini:'Gemini CLI',dsh:'DeepSeek Harness',
+                hermes:'Hermes'};
 let aiBusy=false;
 
 function aiRow(ok,name,detail){
@@ -1798,6 +1875,9 @@ function paintAiResult(r){
     w.forEach(function(x){ if(x.ok) g[x.name]=true; });
     S.global=g;
   }
+  // macOS 上没有安装器，`bampiao` 本来不在 PATH 里（dmg 拖进 Applications 就完事）。
+  // 刚才顺手补的软链要明说，否则用户永远不知道终端里为什么能敲了 / 为什么不能。
+  if(r.shim){ h+='<div class="aRow ok"><i>✓</i><b>命令行</b><span>已加进 PATH：'+esc(r.shim)+'</span></div>'; }
   if(good&&c.ok){
     h+='<p class="aDone">好了。现在去第 3 步，跟你的 AI 说「画一张」，它会自己调半瓢。</p>';
   }else if(good&&!c.ok){
@@ -1857,6 +1937,32 @@ function renderSettings(){
   const cr = S.crashes || 0;
   $('#sCrash').textContent = cr ? ('有 ' + cr + ' 次异常，点这里看日志') : '没有';
   $('#sCrash').onclick = () => cr && act({do:'open_data', sub:'logs'}, null, null, '已打开日志文件夹');
+  paintAutostart();
+}
+
+// 开机自启：以前装完默认就开，面板里却没有任何地方能关。2026-11-06 的反馈
+// 「半瓢好像会一直自己启动，我经常关掉它，然后不知道啥时候他又自己打开了」
+// 就是这么来的——用户以为关掉了，其实只是关掉窗口，而且他不知道去哪关自启。
+async function paintAutostart(){
+  const lab=$('#sAuto'), btn=$('#sAutoTog');
+  if(!lab||!btn) return;
+  let r={};
+  try{ r=await post({do:'autostart_get'}); }
+  catch(e){ lab.textContent='读不到状态'; btn.disabled=true; return; }
+  if(!r.ok){ lab.textContent=r.why||'读不到状态'; btn.disabled=true; return; }
+  const on=!!r.enabled;
+  lab.textContent = on ? '开着的（开机会自己在后台跑）' : '关着的（要用时自己打开）';
+  btn.textContent = on ? '关掉它' : '打开';
+  btn.disabled = false;
+  btn.onclick = async()=>{
+    btn.disabled=true;
+    try{
+      const x=await post({do:'autostart_set', on:!on});
+      if(!x.ok){ toast(x.why||'没改成功'); btn.disabled=false; return; }
+      toast(on ? '好，下次开机不会自己起来了' : '好，下次开机会自动在后台跑');
+      paintAutostart();
+    }catch(e){ toast(e.message); btn.disabled=false; }
+  };
 }
 // ── 出图用哪个账号（三个卡片；只有一个号时整块不显示）
 function paintStrat(){
@@ -2022,7 +2128,14 @@ function paintUpdate(u){
   }
   if(dl && dl.phase==='failed'){
     el.hidden=false; el.className='upd new';
-    el.innerHTML='更新没成功：'+esc(dl.why||'')+'　<button class="btn sm" id="sUpdGo">再试一次</button>';
+    // 慢网用户可能怎么重试都下不完 60MB（2026-11-06 那位卡在 0.2.5 三天）。
+    // 所以除了「再试一次」（会断点续传），再给一条手动下载的出路。
+    el.innerHTML='更新没成功：'+esc(dl.why||'')
+      +'<div style="margin-top:6px">'
+      +'<button class="btn sm" id="sUpdGo">再试一次</button>'
+      +'<button class="btn sm" id="sUpdCopy" style="margin-left:6px">复制下载链接</button>'
+      +'<span class="muted" style="margin-left:8px;font-size:12.5px">再点一次会接着上次的位置继续下</span>'
+      +'</div>';
   }else if(!c){ el.hidden=true; return; }
   else if(!c.ok){ el.hidden=false; el.className='upd'; el.textContent=c.why||'查不到更新'; return; }
   else if(!c.newer){ el.hidden=false; el.className='upd'; el.textContent='已经是最新版。'; return; }
@@ -2050,6 +2163,13 @@ function paintUpdate(u){
       +(canIns?'有图在跑会等它跑完再装，不打断；装完自动重新打开'
              :'Mac 版没有安装器，请复制链接下载 dmg 手动装')+'</span>';
   }
+  const cp=$('#sUpdCopy');
+  if(cp) cp.onclick=async()=>{
+    // 下载不动的用户至少能拿链接去浏览器/迅雷里下，不用干等着
+    const u2=(c&&c.url)||'';
+    try{ await navigator.clipboard.writeText(u2); toast('下载链接已复制，可以贴到浏览器里下'); }
+    catch(e){ toast('下载地址：'+u2); }
+  };
   const go=$('#sUpdGo');
   if(go) go.onclick=()=>{
     if(!canIns){
@@ -2078,6 +2198,8 @@ function go(k){
   S.tab=k;
   $('#pgStart').hidden=k!=='start'; $('#pgJobs').hidden=k!=='jobs'; $('#pgAccs').hidden=k!=='accs';
   $('#pgSet').hidden=k!=='set';
+  const _page=document.querySelector('.page');
+  if(_page) _page.classList.toggle('wide', k==='accs');
   $('main').scrollTop=0;
   if(k==='accs') loadOverview();
   if(k==='jobs' && (S.summary||{}).jobs) loadYield();
@@ -2270,9 +2392,13 @@ let _tick=0;
 setInterval(()=>{
   _tick++;
   if(S.cur && $('#drawer').classList.contains('on')){
-    const sig=JSON.stringify([S.lastJob&&S.lastJob.status,S.lastJob&&S.lastJob.rendered,
-      (S.lastJob&&S.lastJob.items||[]).map(i=>i.status+i.error_code).join()]);
-    if(sig!==S.drawerSig){ S.drawerSig=sig; openJob(S.cur, true); }
+    // 抽屉开着：任务还在跑/排队就每轮（2 秒）真去拉一次。
+    // 以前是拿 S.lastJob 算签名再决定拉不拉 —— 可 lastJob 只有"拉过"才会变，
+    // 于是签名永远相等、永远不拉，抽屉就停在打开那一刻（2026-11-07：0/9 一直不动）。
+    // 拉的是本机接口，几十毫秒；不跑任务时 20 秒对一次表就够。
+    const j=S.lastJob;
+    const live=!!j && (j.status==='running'||j.status==='queued');
+    if(live || _tick % 10 === 0) openJob(S.cur, true);
   }
   const waiting=(S.accounts||[]).some(a=>(a.login_phase||{}).phase==='waiting')||S.pendingNew;
   if(!waiting && !S.running && _tick % 10 !== 0) return;

@@ -61,6 +61,7 @@ JOB_STATES = (JOB_QUEUED, JOB_RUNNING, JOB_DONE, JOB_PARTIAL, JOB_FAILED, JOB_CA
 
 # ---- 单条任务状态
 ITEM_QUEUED = "queued"
+ITEM_RUNNING = "running"     # 这一张正在画；进度页要能看出"当前画到第几张"
 ITEM_OK = "ok"
 ITEM_FAILED = "failed"
 ITEM_SKIPPED = "skipped"    # 撞上限后本批剩余不再尝试
@@ -79,6 +80,10 @@ class Item:
     aspect: str = "1:1"
     alpha: bool = False
     anim: bool = False       # 这一条要动图（GIF）；只影响提示词和质检，交付类型看文件本身
+    # 2026-11-07 SVG 旁路：默认全 False，老单子读出来跟以前完全一样。
+    # svg=True 要 .svg 矢量文件；svg_anim=True 额外要 SMIL/CSS 动效。
+    svg: bool = False
+    svg_anim: bool = False
     refs: list[str] = field(default_factory=list)
     status: str = ITEM_QUEUED
     files: list[str] = field(default_factory=list)   # 相对 job 目录的文件名
@@ -100,6 +105,8 @@ class Item:
             aspect=str(d.get("aspect") or "1:1"),
             alpha=bool(d.get("alpha")),
             anim=bool(d.get("anim")),
+            svg=bool(d.get("svg")),
+            svg_anim=bool(d.get("svg_anim")),
             refs=[str(x) for x in (d.get("refs") or [])],
             status=str(d.get("status") or ITEM_QUEUED),
             files=[str(x) for x in (d.get("files") or [])],
@@ -184,7 +191,8 @@ class Job:
         """
         if self.status == JOB_CANCELLED:
             return JOB_CANCELLED
-        todo = [it for it in self.items if it.status == ITEM_QUEUED]
+        # running 也算"还没结束"：中途重算状态时不能把正在画的一张看成已经跑完
+        todo = [it for it in self.items if it.status in (ITEM_QUEUED, ITEM_RUNNING)]
         if todo:
             return JOB_RUNNING if self.started_at else JOB_QUEUED
         ok = self.rendered
@@ -242,6 +250,7 @@ class AccountState:
     login: str = "unknown"           # ok / required / unknown
     login_checked_at: float | None = None
     login_user: str = ""             # 会话里拿到的短 id，用于发现"换了号"
+    login_email: str = ""            # 最近一次探到的登录邮箱，账号卡直接显示（不靠登录 phase 文件兜底）
     cooldown_until: float | None = None
     # 撞上限的记录：每次 {at, after_n, reset_at}。样本够了就能估"今天还能出几张"
     quota_hits: list[dict] = field(default_factory=list)
@@ -292,6 +301,7 @@ class AccountState:
             login=str(d.get("login") or "unknown"),
             login_checked_at=d.get("login_checked_at"),
             login_user=str(d.get("login_user") or ""),
+            login_email=str(d.get("login_email") or ""),
             cooldown_until=d.get("cooldown_until"),
             quota_hits=[x for x in (d.get("quota_hits") or []) if isinstance(x, dict)],
             last_used_at=d.get("last_used_at"),

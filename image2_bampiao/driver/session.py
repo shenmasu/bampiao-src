@@ -294,7 +294,8 @@ def _chats_run(cfg: cfg_mod.Config, acc: cfg_mod.Account, op: str, *,
 def generate(cfg: cfg_mod.Config, acc: cfg_mod.Account, prompt: str, out: Path, *,
              refs: list[str] | None = None, aspect: str = "1:1", alpha: bool = False,
              opening: str = "wide", timeout: int = 600,
-             lock_timeout: float = 0.0, title: str = "", anim: bool = False) -> dict:
+             lock_timeout: float = 0.0, title: str = "", anim: bool = False,
+             svg: bool = False, svg_anim: bool = False) -> dict:
     """出一条图。成功返回 {"ok": True, "path": 绝对路径}。
 
     **一个账号同一时刻只允许一次出图**：两次调用连的是同一个 CDP 页面，
@@ -306,7 +307,7 @@ def generate(cfg: cfg_mod.Config, acc: cfg_mod.Account, prompt: str, out: Path, 
                              what="账号 %s 的出图" % acc.id):
             return _generate(cfg, acc, prompt, out, refs=refs, aspect=aspect,
                              alpha=alpha, opening=opening, timeout=timeout, title=title,
-                             anim=anim)
+                             anim=anim, svg=svg, svg_anim=svg_anim)
     except locks.Busy as e:
         return {"ok": False, "kind": "busy", "rc": 0, "log": "", "tail": str(e)}
 
@@ -314,7 +315,7 @@ def generate(cfg: cfg_mod.Config, acc: cfg_mod.Account, prompt: str, out: Path, 
 def _generate(cfg: cfg_mod.Config, acc: cfg_mod.Account, prompt: str, out: Path, *,
               refs: list[str] | None = None, aspect: str = "1:1", alpha: bool = False,
               opening: str = "wide", timeout: int = 600, title: str = "",
-              anim: bool = False) -> dict:
+              anim: bool = False, svg: bool = False, svg_anim: bool = False) -> dict:
     try:
         browser.ensure(cfg, acc)
     except Exception as e:
@@ -338,6 +339,10 @@ def _generate(cfg: cfg_mod.Config, acc: cfg_mod.Account, prompt: str, out: Path,
         "aspect": aspect or "",
         "alpha": bool(alpha),
         "anim": bool(anim),
+        # SVG 旁路：驱动看到这个才走文件附件通道。默认 False，
+        # 老单子/老调用方写出来的 items.json 跟以前一字不差。
+        "svg": bool(svg),
+        "svg_anim": bool(svg_anim),
     }], ensure_ascii=False, indent=1), encoding="utf-8")
 
     out_dir = cfg.state_dir / "driver" / ("out_%d" % int(time.time() * 1000))
@@ -346,8 +351,10 @@ def _generate(cfg: cfg_mod.Config, acc: cfg_mod.Account, prompt: str, out: Path,
     log = cfg.logs_dir / ("gen_%s_%d.log" % (acc.id, int(time.time())))
     rc, tail = _run(cfg, args, log, timeout + 180)
 
-    # 不能只认 *.png：Images 2.6 的 GIF 现在是 .gif（2026-11-06）
-    outs = media.outputs(out_dir)
+    # 不能只认 *.png：Images 2.6 的 GIF 现在是 .gif（2026-11-06）。
+    # .svg 只在明确出 SVG 的单子里才纳入扫描，其他单子的目录里就算混进
+    # 一个 svg 也不会被误当成成图（2026-11-07）。
+    outs = media.outputs(out_dir, include_svg=svg)
     if rc != 0 or not outs:
         kind = _classify(rc, out_dir, tail)
         r = {"ok": False, "kind": kind, "rc": rc, "log": str(log), "tail": tail}
@@ -372,7 +379,10 @@ def _generate(cfg: cfg_mod.Config, acc: cfg_mod.Account, prompt: str, out: Path,
     shutil.copy2(src, dst)
 
     info = media.probe(dst)
-    if alpha and info.get("animated"):
+    if svg and alpha:
+        # SVG 本身就是矢量 + 透明底，抠图（Pillow）对 XML 毫无意义，还会报错
+        print("  （SVG 是矢量文本，--alpha 已忽略）", file=sys.stderr)
+    elif alpha and info.get("animated"):
         # 抠图会把动图压成一张静图——宁可不抠，也不能把动画弄没
         print("  （这是动图，--alpha 跳过抠图；需要透明底请单独出一张静图）",
               file=sys.stderr)
@@ -388,12 +398,16 @@ def _generate(cfg: cfg_mod.Config, acc: cfg_mod.Account, prompt: str, out: Path,
             print("  （抠图失败：%s；图已按原样保存，可手工抠）" % e, file=sys.stderr)
 
     size = None
-    try:
-        from PIL import Image
-        with Image.open(dst) as im:
-            size = list(im.size)
-    except Exception:
-        pass
+    if svg:
+        # Pillow 打不开 XML；probe_svg 从 viewBox / width height 读出尺寸
+        size = info.get("size") or None
+    else:
+        try:
+            from PIL import Image
+            with Image.open(dst) as im:
+                size = list(im.size)
+        except Exception:
+            pass
     # 驱动的"标注"（比例不符 / 要动图却给了静图 / 尺寸偏小）写在 _flags.json 里。
     # 以前直接 rmtree，标注跟着现场一起没了——用户只看到"已保存"，不知道拿错了
     # （2026-11-06 评审）。
@@ -404,7 +418,10 @@ def _generate(cfg: cfg_mod.Config, acc: cfg_mod.Account, prompt: str, out: Path,
             note = "；".join(str(v) for v in _fl.values() if v)[:300]
     except Exception:
         pass
-    if anim and not info.get("animated"):
+    if svg and svg_anim and not info.get("svg_animated"):
+        note = ("要的是会动的 SVG，但拿到的是静态矢量图"
+                + ("；" + note if note else ""))[:300]
+    elif anim and not info.get("animated"):
         note = ("要的是动图，但拿到的是静态图" + ("；" + note if note else ""))[:300]
 
     # 图已经复制到 jobs 目录了，驱动的工作目录（每单一张原图，约 1MB）留着只会占地。
@@ -413,6 +430,11 @@ def _generate(cfg: cfg_mod.Config, acc: cfg_mod.Account, prompt: str, out: Path,
         shutil.rmtree(out_dir, ignore_errors=True)
     except Exception:
         pass
-    return {"ok": True, "path": str(dst.resolve()), "size": size, "log": str(log),
-            "format": info.get("format", ""), "frames": info.get("frames", 1),
-            "animated": bool(info.get("animated")), "note": note}
+    _r = {"ok": True, "path": str(dst.resolve()), "size": size, "log": str(log),
+          "format": info.get("format", ""), "frames": info.get("frames", 1),
+          "animated": bool(info.get("animated")), "note": note}
+    if svg:
+        # 只给 SVG 单子加这两个键：老调用方拿到的数据结构保持原样
+        _r["svg"] = bool(info.get("svg"))
+        _r["svg_animated"] = bool(info.get("svg_animated"))
+    return _r

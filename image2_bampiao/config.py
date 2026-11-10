@@ -476,6 +476,37 @@ def set_scalar(path: Path, key: str, value: str) -> None:
         os.replace(tmp, path)
 
 
+def set_account_port(path: Path, aid: str, port: int) -> None:
+    """改某个账号的调试端口（只动那一行，别的一字不改）。
+
+    为的是什么：端口被别的程序占着时（用户自己开的 Chrome 也加了
+    --remote-debugging-port，或者上次没退干净的浏览器还挂着），
+    2026-11-06 之前只报错「不是半瓢的实例」，用户点「打开浏览器」毫无反应，
+    也不知道该去关哪个程序。现在驱动层自动换一个空端口，顺手写回配置，
+    下次启动用的就是新端口，不会再撞同一堵墙。
+    """
+    import re
+
+    with locks.exclusive(path.with_suffix(".lock"), timeout=15,
+                         what="配置文件（另一个半瓢正在改它）"):
+        text = path.read_text(encoding="utf-8")
+        blocks = _account_blocks(text)
+        head = text[: blocks[0][0]] if blocks else text
+        hit = False
+        out: list[str] = []
+        for _st, _en, blk in blocks:
+            if re.search(r'(?m)^[ \t]*id[ \t]*=[ \t]*"%s"' % re.escape(aid), blk):
+                new, n = re.subn(r"(?m)^([ \t]*port[ \t]*=[ \t]*)\d+",
+                                 lambda m: "%s%d" % (m.group(1), int(port)), blk, count=1)
+                if n == 0:
+                    new = blk.rstrip("\n") + "\nport = %d\n" % int(port)
+                blk, hit = new, True
+            out.append(blk)
+        if not hit:
+            raise ConfigError("配置里没有账号 %s" % aid)
+        _write_accounts(path, out, head)
+
+
 def remove_account(path: Path, aid: str) -> None:
     """从配置里删掉一个账号。**不删 profile 目录**——里面是登录态和出过的图，
     删配置只是"不再用它跑"，后悔了我们还能加回来。

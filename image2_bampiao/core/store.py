@@ -354,6 +354,10 @@ class Store:
         d["retried"] = bool(job.retry_of)
         d["thumb"] = ""
         d["animated"] = False
+        # 2026-11-07：SVG 单独立标记，绝不塞进 ``animated``——那个字段在面板上
+        # 画的是 "GIF" 角标，把矢量图说成 GIF 会误导。
+        d["svg"] = False
+        d["svg_animated"] = False
         _all_files = []
         for it in d.get("items") or []:
             _fs = it.get("files") or []
@@ -362,6 +366,8 @@ class Store:
                 d["thumb"] = "/f/%d/%s?w=80" % (job.id, _fs[0])
             if any(media_mod.is_anim_ext(_f) for _f in _fs):
                 d["animated"] = True
+            if any(media_mod.is_svg_path(_f) for _f in _fs):
+                d["svg"] = True
         # 旧单可能把 GIF 存成了 .png（0.2.51 及以前）：后缀看不出来，就按内容认一次。
         # 只 probe 第一条，带缓存；24 行 × 每 6 秒也不会真的反复读盘。
         if not d["animated"]:
@@ -378,6 +384,19 @@ class Store:
                         _MEDIA_CACHE[_key] = _info
                     if _info.get("animated"):
                         d["animated"] = True
+                        break
+                except Exception:
+                    continue
+        # SVG 单独探测，不插进上面那段老逻辑：只对 .svg 文件跑一次，
+        # 没有 SVG 的单子连这半行开销都不会多。
+        if d["svg"]:
+            for _f in _all_files:
+                if not media_mod.is_svg_path(_f):
+                    continue
+                try:
+                    _info = media_mod.probe_svg(self.dir_of(job.id) / _f)
+                    if _info.get("svg_animated"):
+                        d["svg_animated"] = True
                         break
                 except Exception:
                     continue
@@ -576,7 +595,7 @@ class Store:
         alive(account_id) 返回 True 表示这个号**此刻真有进程在出图**（出图锁被占着），
         这种单不是残留，不能碰：2026-10-30 实测，桌面壳启动时把命令行正在跑的单标成了失败。
         """
-        from .models import ITEM_QUEUED, ITEM_SKIPPED, TIMEOUT_UNCERTAIN
+        from .models import ITEM_QUEUED, ITEM_RUNNING, ITEM_SKIPPED, TIMEOUT_UNCERTAIN
 
         out = []
         for job in self.running():
@@ -594,7 +613,8 @@ class Store:
             job.error_code = TIMEOUT_UNCERTAIN
             job.note = "上次退出（或崩溃）时正在跑，远端状态未知；确认后再重投"
             for it in job.items:
-                if it.status == ITEM_QUEUED:
+                # running 也要收尾：进程都没了，还挂"出图中"就是骗人
+                if it.status in (ITEM_QUEUED, ITEM_RUNNING):
                     it.status = ITEM_SKIPPED
                     it.error_code = TIMEOUT_UNCERTAIN
                     it.note = "整单已标不确定"

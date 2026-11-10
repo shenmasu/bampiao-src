@@ -45,7 +45,26 @@ def _ver(v: str) -> tuple:
 
 
 def platform_key() -> str:
-    return "mac" if sys.platform == "darwin" else "win"
+    """清单里用哪个键取安装包。
+
+    **必须和 tools/publish_update.py 写进去的键一致**。以前这里返回 "mac"，
+    而清单里写的是 "mac_arm64" —— 于是 Mac 用户的 `pkg` 永远是个空字典：
+    查得到"有新版本"，点下载却拿到空 URL（点「复制下载链接」复制出来是一串空格）。
+    Mac 的自动更新从上线起就没成功过一次，只是没人报（2026-11-06 排查发现）。
+
+    Intel Mac 对应的是 **源码包**（mac_intel_src），不是 dmg：那台机器上没法
+    交叉编译 arm64，只能让用户自己 build（见发版记录 0.2.53）。
+    """
+    if sys.platform != "darwin":
+        return "win"
+    try:
+        import platform as _p
+
+        if _p.machine().lower() in ("x86_64", "i386", "i686"):
+            return "mac_intel_src"
+    except Exception:
+        pass
+    return "mac_arm64"
 
 
 def check(url: str = MANIFEST_URL, timeout: float = 8.0) -> dict:
@@ -68,8 +87,13 @@ def check(url: str = MANIFEST_URL, timeout: float = 8.0) -> dict:
         return {"ok": False, "current": __version__, "why": "版本清单格式不对（不是对象）"}
     latest = str(d.get("version") or "")
     pkg = d.get(platform_key()) or {}
-    return {"ok": True, "current": __version__, "latest": latest,
-            "newer": bool(latest) and _ver(latest) > _ver(__version__),
+    # **按平台条目自己的版本算**。清单是"一个版本一次发版"，但 Mac 和 Windows
+    # 常常不是同一时刻打的包：这次 0.2.54 只动了 Windows，如果还看顶层 version，
+    # Mac 用户会一直被告知"有新版本 0.2.54"，点下载却拿到 0.2.53 的 dmg，
+    # 装完还是 0.2.53，于是永远在提示更新——比不提示还糟。
+    mine = str(pkg.get("version") or latest)
+    return {"ok": True, "current": __version__, "latest": mine,
+            "newer": bool(mine) and _ver(mine) > _ver(__version__),
             "notes": str(d.get("notes") or ""), "url": str(pkg.get("url") or ""),
             "sha256": str(pkg.get("sha256") or "").lower(), "size": int(pkg.get("size") or 0),
             "checked_at": time.time()}
@@ -83,6 +107,10 @@ def sweep(dest_dir: Path, keep: Path | None = None) -> tuple[int, int]:
     每更新一版就多一份，这是纯增量垃圾。
 
     安装器已经启动、exe 被系统打开时删不掉，那是正常情况：跳过，下次再来。
+
+    **`.part` 一定要留着**：那是没下完的半截文件，续传全靠它。
+    2026-11-06 的反馈就是这么翻车的——慢网用户每次点"再试一次"，
+    这里先把 30MB 的 .part 删掉，然后再从头下 60MB，永远下不完。
     """
     removed = freed = 0
     try:
@@ -91,7 +119,7 @@ def sweep(dest_dir: Path, keep: Path | None = None) -> tuple[int, int]:
         for p in dest_dir.iterdir():
             if not p.is_file() or (keep is not None and p == keep):
                 continue
-            if p.suffix.lower() not in (".exe", ".part", ".dmg", ".pkg", ".msi"):
+            if p.suffix.lower() not in (".exe", ".dmg", ".pkg", ".msi"):
                 continue
             try:
                 size = p.stat().st_size
@@ -105,9 +133,51 @@ def sweep(dest_dir: Path, keep: Path | None = None) -> tuple[int, int]:
     return removed, freed
 
 
-def download(info: dict, dest_dir: Path, progress=None, timeout: float = 30.0) -> Path:
-    """下载并校验。progress(已下字节, 总字节) 给面板显示进度。"""
-    # 下新的之前先扫一遍：反正旧版已经装过了，留着只占地方
+def _sha256_file(path: Path) -> str:
+    """算整个文件的指纹。
+
+    以前是边下边 h.update，省一次读盘。但续传接不上——半截文件的哈希状态
+    没法保存。60MB 读一遍也就几十毫秒，换成"下完再算"值得。
+    """
+    h = hashlib.sha256()
+    with open(path, "rb") as f:
+        for chunk in iter(lambda: f.read(1024 * 1024), b""):
+            h.update(chunk)
+    return h.hexdigest()
+
+
+def _human(e: BaseException) -> str:
+    """把 urllib 那套英文异常翻成人话。
+
+    2026-11-06 用户反馈的原文是「更新没成功：The read operation timed out」——
+    一句英文 socket 错误，用户看完只会觉得这软件坏了。
+    """
+    text = str(e).lower()
+    if isinstance(e, TimeoutError) or "timed out" in text:
+        return "网络卡住了（下载超时）"
+    if isinstance(e, urllib.error.URLError):
+        return "连不上更新服务器（%s）" % (getattr(e, "reason", None) or e)
+    if isinstance(e, ConnectionError) or "connection" in text:
+        return "网络断了"
+    return "%s: %s" % (type(e).__name__, e)
+
+
+def download(info: dict, dest_dir: Path, progress=None, timeout: float = 45.0,
+             retries: int = 3) -> Path:
+    """下载并校验。progress(已下字节, 总字节) 给面板显示进度。
+
+    三个韧性设计，都是被真实反馈打出来的：
+
+    1. **断点续传**：先看 `.part` 有多大，带 `Range` 头接着下。
+       慢网用户下到 40MB 断了，再点一次是从 40MB 继续，不是回零。
+    2. **自动重试**：网络抖一下就重来，重试之间退避 1.5s / 3s。
+       用户不需要理解"再试一次"到底会不会白费——它会接着下。
+    3. **说人话**：超时/断网翻译成中文，并且告诉他"已经下了多少、点再试一次会接着下"。
+
+    2026-11-06 的完整因果：60MB 安装包 + 单次 30s 超时 + 失败删 `.part`，
+    于是那位用户点了三次、卡了三天，一直停在 0.2.5 升不上来。
+    """
+    # 下新的之前先扫一遍：反正旧版已经装过了，留着只占地方（`.part` 会被保留）
     sweep(dest_dir)
     url, want = info.get("url") or "", (info.get("sha256") or "").lower()
     if not url.startswith(ALLOWED_PREFIX):
@@ -117,32 +187,76 @@ def download(info: dict, dest_dir: Path, progress=None, timeout: float = 30.0) -
     dest_dir.mkdir(parents=True, exist_ok=True)
     # 只取最后一段，并且只保留安全字符：远端 url 里塞 ".." 段时不能写到目录外
     name = PurePosixPath(url.split("?")[0]).name
-    name = "".join(ch for ch in name if ch.isalnum() or ch in "._-") or "bampiao-setup.exe"
-    if not name.lower().endswith(".exe"):
-        name += ".exe"
+    name = "".join(ch for ch in name if ch.isalnum() or ch in "._-") or "bampiao-setup"
+    if not PurePosixPath(name).suffix:
+        name += ".exe" if platform_key() == "win" else ".dmg"
     dst = dest_dir / name
     tmp = dst.with_name(dst.name + ".part")
-    h = hashlib.sha256()
     total = int(info.get("size") or 0)
-    got = 0
-    req = urllib.request.Request(url, headers={"User-Agent": UA})
-    with urllib.request.urlopen(req, timeout=timeout) as r, open(tmp, "wb") as f:
-        # 只校验初始 URL 不够：urllib 默认跟随 302，最终可能落到任意 host。
-        # 这里再确认一次"真正在下载的那个地址"。
-        final = r.geturl() or url
-        if not final.startswith(ALLOWED_PREFIX):
-            raise RuntimeError("安装包被重定向到别处（%s），没下载" % final[:80])
-        total = total or int(r.headers.get("Content-Length") or 0)
-        while True:
-            chunk = r.read(256 * 1024)
-            if not chunk:
-                break
-            f.write(chunk)
-            h.update(chunk)
-            got += len(chunk)
-            if progress:
-                progress(got, total)
-    if h.hexdigest() != want:
+
+    last = ""
+    for attempt in range(1, max(1, retries) + 1):
+        have = tmp.stat().st_size if tmp.exists() else 0
+        if total and have > total:           # 上次下多了/文件坏了，重来
+            tmp.unlink(missing_ok=True)
+            have = 0
+        if total and have >= total:
+            break                            # 上次其实已经下完了
+
+        req = urllib.request.Request(url, headers={"User-Agent": UA})
+        if have:
+            req.add_header("Range", "bytes=%d-" % have)
+        try:
+            with urllib.request.urlopen(req, timeout=timeout) as r:
+                # 只校验初始 URL 不够：urllib 默认跟随 302，最终可能落到任意 host。
+                # 这里再确认一次"真正在下载的那个地址"。
+                final = r.geturl() or url
+                if not final.startswith(ALLOWED_PREFIX):
+                    raise RuntimeError("安装包被重定向到别处（%s），没下载" % final[:80])
+                if have and r.status != 206:
+                    have = 0                 # 服务器不认 Range，只能从头来
+                clen = int(r.headers.get("Content-Length") or 0)
+                if clen:
+                    total = have + clen
+                got = have
+                if progress:
+                    progress(got, total)
+                with open(tmp, "ab" if have else "wb") as f:
+                    while True:
+                        chunk = r.read(256 * 1024)
+                        if not chunk:
+                            break
+                        f.write(chunk)
+                        got += len(chunk)
+                        if progress:
+                            progress(got, total)
+            # http.client 的 read(amt) 遇到**提前 EOF 是静默返回 b""**（它自己的注释里
+            # 写着"理想情况该抛 IncompleteRead，但为了兼容性没抛"）。所以断流必须自己
+            # 按字节数认出来：不认就当成下完了，接着 sha 校验失败、.part 被删，
+            # 用户又得从零开始——这正是 2026-11-06 那位卡在 57% 的用户的死循环。
+            if total and got < total:
+                raise ConnectionError("只收到 %d/%d 字节" % (got, total))
+            break                            # 下完了
+        except urllib.error.HTTPError as e:
+            # 4xx 重试没用（地址错了/被删了），直接说清楚，别让用户干等
+            if 400 <= e.code < 500 and e.code not in (408, 429):
+                raise RuntimeError("下载地址打不开（HTTP %d），可能服务器上还没放这个包" % e.code) from None
+            last = "服务器返回 %d" % e.code
+        except RuntimeError:
+            raise                            # 重定向/参数这类错误不是网络抖动，不重试
+        except Exception as e:
+            last = _human(e)
+
+        if attempt < retries:
+            time.sleep(1.5 * attempt)
+
+    if not tmp.exists():
+        raise RuntimeError("没下下来（%s），过会儿再试" % (last or "原因不明"))
+    if total and tmp.stat().st_size < total:
+        pct = int(tmp.stat().st_size * 100 / total)
+        # 别在这儿解释"再点一次会续传"——面板在按钮旁边已经写了，重复反而啰嗦
+        raise RuntimeError("下到 %d%% 断了（%s）" % (pct, last or "网络不稳"))
+    if _sha256_file(tmp) != want:
         tmp.unlink(missing_ok=True)
         raise RuntimeError("下载的文件校验不对（可能没下完整），没安装，再试一次")
     tmp.replace(dst)

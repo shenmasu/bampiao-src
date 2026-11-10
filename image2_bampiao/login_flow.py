@@ -64,6 +64,32 @@ async def _wait_login(port: int, deadline: float, poll: float = 2.0,
     return False, last
 
 
+async def _peek_state(port: int) -> dict:
+    """只连已经开着的 CDP 读一次登录态；连不上/不是 ChatGPT 页就返回空。"""
+    from playwright.async_api import async_playwright
+
+    async with async_playwright() as p:
+        b = await p.chromium.connect_over_cdp("http://127.0.0.1:%d" % port)
+        if not b.contexts or not b.contexts[0].pages:
+            return {}
+        pg = b.contexts[0].pages[0]
+        if not pg.url.startswith("https://chatgpt.com"):
+            return {}
+        return await pg.evaluate(_JS_STATE)
+
+
+def read_state(port: int, timeout: float = 4.0) -> dict:
+    """只读探一次登录态，给面板补邮箱用。
+
+    **绝不调用 browser.ensure()**：账号页刷新不能顺手把 13 个浏览器都拉起来。
+    浏览器没开 / 页面还没到 chatgpt.com / CDP 连不上，一律安静返回 {}。
+    """
+    try:
+        return asyncio.run(asyncio.wait_for(_peek_state(port), timeout))
+    except Exception:
+        return {}
+
+
 def phase_path(cfg: cfg_mod.Config, account_id: str):
     d = cfg.state_dir / "login"
     d.mkdir(parents=True, exist_ok=True)
@@ -220,6 +246,9 @@ def _mark_login_ok(cfg: cfg_mod.Config, acc: cfg_mod.Account, state: dict) -> No
         st.login = "ok"
         st.login_checked_at = time.time()
         st.login_user = str((state or {}).get("user_id") or "")
+        email = str((state or {}).get("email") or "").strip()
+        if email:
+            st.login_email = email
         store.save_account(st)
     except Exception:
         # 状态记录失败不能影响"登录成功"这个事实本身

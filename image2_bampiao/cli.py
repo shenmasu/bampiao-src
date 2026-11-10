@@ -156,8 +156,8 @@ def _exe_hint() -> str:
     return str(exe) if getattr(sys, "frozen", False) else "bampiao"
 
 
-_PATH_RULE_OLD = ("- 如果提示 bampiao 不是内部或外部命令：说明你启动时还没读到新的 PATH，\n"
-                  "  让我重启终端 / 重启 Claude Code 再说一声，不要自己去改 PATH。")
+_PATH_RULE_OLD = ("- 如果提示找不到 bampiao（Windows「不是内部或外部命令」/ macOS「command not found」）：\n"
+                  "  说明你启动时还没读到新的 PATH，让我重启终端 / 重启你再试一次，不要自己去改 PATH。")
 
 
 def skill_text(which: str = "paste") -> str:
@@ -217,13 +217,65 @@ def global_targets() -> dict:
     }
 
 
+_SKILL_TARGETS = {
+    "workbuddy": Path(".workbuddy") / "skills" / "bampiao" / "SKILL.md",
+    "hermes": Path(".hermes") / "skills" / "bampiao" / "SKILL.md",
+}
+
+
 def skill_targets() -> dict:
     """要装成 **skill 目录**的（不是追加段落，是整份文件，靠 frontmatter 被识别）。
 
     WorkBuddy 只认 ~/.workbuddy/skills/<名字>/SKILL.md 这种结构，往 AGENTS.md
     追加它是不读的 —— 这正是那位 Mac 用户"只有 Claude 能出图"的原因。
+
+    Hermes（Nous Research 那个 Agent）同理：它的技能就是 ~/.hermes/skills/<名字>/SKILL.md，
+    开场只读 frontmatter 里的 name/description 做索引，真要用才加载全文（progressive
+    disclosure）。2026-11-06 朋友的 Hermes Desktop 在 Mac 上只找到 /Applications/半瓢.app，
+    「命令行里没找到 bampiao 命令」——因为我们压根没往她的技能目录写过东西。
     """
-    return {"workbuddy": Path.home() / ".workbuddy" / "skills" / "bampiao" / "SKILL.md"}
+    return {k: Path.home() / rel for k, rel in _SKILL_TARGETS.items()}
+
+
+def _ensure_cli_shim(dirs: list[str] | None = None) -> str:
+    """macOS 上把 bampiao 放进 PATH，返回建好的软链路径（没建就返回空串）。
+
+    2026-11-06 反馈：朋友的 Hermes 在 Mac 上能找到 `/Applications/半瓢.app`
+    （版本、bundle id 都报对了），但说"命令行里没找到可直接用的 bampiao 或 半瓢 命令"。
+    .app 里其实一直有 CLI（Contents/MacOS/bampiao），只是没人把它放进 PATH ——
+    dmg 拖进 Applications 就完事了，没有安装器替我们做这件事。
+
+    写进 skill 的说明里会带完整路径，但人和别的工具还是习惯直接敲，所以顺手补一个软链：
+      /usr/local/bin/bampiao  （可写就优先，绝大多数 Mac 都已在 PATH 里）
+      ~/.local/bin/bampiao    （只有它本来就在 PATH 里才建，否则建了也白建）
+    已存在同名文件就认输，绝不覆盖别人的东西。
+
+    `dirs` 只给测试用：这段代码会往系统目录写东西，跑单元测试不能真去碰 /usr/local/bin。
+    """
+    if sys.platform != "darwin" or not getattr(sys, "frozen", False):
+        return ""
+    exe = _exe_hint()
+    if not exe.startswith("/"):
+        return ""
+    if dirs is None:
+        path_dirs = [p for p in os.environ.get("PATH", "").split(os.pathsep) if p]
+        home_bin = str(Path.home() / ".local" / "bin")
+        dirs = ["/usr/local/bin"] + ([home_bin] if home_bin in path_dirs else [])
+    for d in dirs:
+        link = Path(d) / "bampiao"
+        try:
+            if link.is_symlink():
+                if os.path.realpath(link) == os.path.realpath(exe):
+                    return str(link)                 # 已经是它了
+                continue                             # 指向别处，不抢
+            if link.exists():
+                continue                             # 是个真文件，不动
+            Path(d).mkdir(parents=True, exist_ok=True)
+            os.symlink(exe, link)
+            return str(link)
+        except OSError:
+            continue
+    return ""
 
 
 def _target_path(name: str) -> tuple[Path | None, str]:
@@ -252,6 +304,22 @@ def global_targets_installed() -> list[str]:
     return out
 
 
+def _os_why(e: OSError) -> str:
+    """把写文件失败的 errno 翻成"用户接下来该干什么"。
+
+    直接甩 `[Errno 13] Permission denied: 'C:\\...\\SKILL.md'` 给用户，
+    他只能看到一串路径和英文，不知道是自己要动手还是软件坏了。
+    """
+    code = getattr(e, "errno", 0) or 0
+    if code in (13, 1):
+        return "没权限写这个文件：它可能被设成「只读」了（右键 → 属性 → 取消只读），或者正被别的程序锁着"
+    if code == 2:
+        return "上一级目录不存在，建不出来"
+    if code == 28:
+        return "磁盘满了"
+    return str(e)
+
+
 def install_global_auto(remove: bool = False) -> dict:
     """装进全局，不分 Claude Code / Codex：装了哪家写哪家。
 
@@ -269,8 +337,9 @@ def install_global_auto(remove: bool = False) -> dict:
         try:
             r = install_global(t, remove)
         except OSError as e:
-            failed.append("%s（%s）" % (t, e))
-            written.append({"name": t, "ok": False, "why": str(e)})
+            why = _os_why(e)
+            failed.append("%s（%s）" % (t, why))
+            written.append({"name": t, "ok": False, "why": why})
             continue
         if not r.get("ok"):
             failed.append(t)
@@ -291,8 +360,22 @@ def install_global_auto(remove: bool = False) -> dict:
     if not done:
         return {"ok": False, "targets": [], "failed": failed, "written": written,
                 "why": "一个都没写成：%s" % "、".join(failed or ["？"])}
+
+    # macOS 上顺手补个 PATH 软链：朋友的 Hermes 就是因为"命令行里没有 bampiao"才没调起来。
+    # 建不成不影响写入结果（skill 里本来就带完整路径）。
+    shim = ""
+    if not remove:
+        try:
+            shim = _ensure_cli_shim()
+        except Exception:
+            shim = ""
+        if shim:
+            note = (note + "；" if note else "") + "已把 bampiao 加进 PATH：%s" % shim
+
+    # 字段名必须避开 "cli"：面板那边会把 cli_selfcheck() 的结果塞进 r["cli"]，
+    # 同名会被覆盖成 dict，前端渲染出 "[object Object]"。2026-11-06 发 0.2.55 时踩到。
     return {"ok": True, "targets": done, "failed": failed, "written": written,
-            "note": note}
+            "note": note, "shim": shim}
 
 
 def cli_selfcheck() -> dict:
@@ -335,6 +418,22 @@ def cli_selfcheck() -> dict:
             "why": "命令行跑不起来（PATH 里可能没有 bampiao，或者被拦了）"}
 
 
+def _write_text(path: Path, text: str) -> None:
+    """写文件前先摘掉只读位。
+
+    2026-11-06 反馈：`C:\\Users\\sun.yongchang\\.workbuddy\\skills\\bampiao\\SKILL.md`
+    报 `Permission denied`。用户不会想到是文件带了"只读"属性（同步盘、解压出来的、
+    某些编辑器保存时都会这么干），只会觉得半瓢坏了。这是半瓢自己的文件，
+    只读位是我们有权改的，就顺手改掉再写。
+    """
+    try:
+        if path.exists() and not os.access(path, os.W_OK):
+            os.chmod(path, 0o644)
+    except OSError:
+        pass                     # 改不动就照写，让上层报出真实的错
+    path.write_text(text, encoding="utf-8")
+
+
 def install_global(target: str, remove: bool = False) -> dict:
     """把「出图用半瓢」写进（或移出）某个 AI 的全局说明。只动自己那一段，别的一个字不碰。"""
     import re
@@ -350,7 +449,7 @@ def install_global(target: str, remove: bool = False) -> dict:
                 path.unlink()
             return {"ok": True, "path": str(path), "removed": True}
         path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(skill_text("skill").rstrip() + "\n", encoding="utf-8")
+        _write_text(path, skill_text("skill").rstrip() + "\n")
         return {"ok": True, "path": str(path), "removed": False}
 
     old = path.read_text(encoding="utf-8") if path.exists() else ""
@@ -364,8 +463,8 @@ def install_global(target: str, remove: bool = False) -> dict:
     path.parent.mkdir(parents=True, exist_ok=True)
     bak = path.with_name(path.name + ".bampiao-bak")
     if old and not bak.exists():
-        bak.write_text(old, encoding="utf-8")       # 第一次改之前留一份原样
-    path.write_text(body, encoding="utf-8")
+        _write_text(bak, old)                        # 第一次改之前留一份原样
+    _write_text(path, body)
     return {"ok": True, "path": str(path), "removed": remove}
 
 
@@ -809,6 +908,9 @@ def cmd_probe(a) -> int:
         if p.get("logged_in"):
             st.login = "ok"
             st.login_user = str(p.get("user_id") or "")
+            email = str(p.get("email") or "").strip()
+            if email:
+                st.login_email = email
         else:
             st.login = "required"
         st.login_checked_at = __import__("time").time()
@@ -1159,6 +1261,14 @@ def cmd_gen(a) -> int:
         out = Path.cwd() / time.strftime("bampiao-%Y%m%d-%H%M%S.png")
     if not a.json:
         print("用 %s 出图 → %s（约 1–3 分钟）" % (acc.name, out.name))
+    svg, svg_anim = _svg_flags(a)
+    if svg and getattr(a, "gif", False):
+        _err("--svg / --svg-anim 不能和 --gif 一起用：一个要矢量文件，一个要位图动图。",
+             code="BAD_USAGE", hint="二选一；要会动的矢量图用 --svg-anim。")
+        return EXIT_USAGE
+    if svg and a.alpha:
+        a.alpha = False
+        print("（SVG 本身就是透明矢量，--alpha 已忽略）", file=sys.stderr)
     if getattr(a, "gif", False) and a.alpha:
         a.alpha = False
         print("（动图不支持透明底，--alpha 已忽略）", file=sys.stderr)
@@ -1168,6 +1278,8 @@ def cmd_gen(a) -> int:
         if "GIF" not in _p.upper() and "动图" not in _p and "循环" not in _p:
             a.prompt = (_p.rstrip()
                         + "\n（输出为 2–3 秒无缝循环的 GIF 动图，不要静态图。）")
+    if svg:
+        a.prompt = _svg_prompt(a.prompt or "", svg_anim)
     rec = _gen_record_start(cfg, acc, a)
     import re
     gist = re.sub(r"^\s*\d{3,4}\s*[x×*]\s*\d{3,4}\s*", "", " ".join((a.prompt or "").split()))
@@ -1186,7 +1298,8 @@ def cmd_gen(a) -> int:
     else:
         r = sess.generate(cfg, acc, a.prompt, out, refs=a.ref or [], aspect=a.aspect,
                           alpha=a.alpha, timeout=a.timeout, title=title,
-                          anim=bool(getattr(a, "gif", False)))
+                          anim=bool(getattr(a, "gif", False)),
+                          svg=svg, svg_anim=svg_anim)
         _gen_record_end(cfg, rec, r)
     if a.json:
         # error_code 是给 agent 决策的（SKILL 里那张表用的就是这套词），
@@ -1200,6 +1313,9 @@ def cmd_gen(a) -> int:
             payload.setdefault("format", _probe.get("format", ""))
             payload.setdefault("frames", _probe.get("frames", 1))
             payload.setdefault("animated", bool(_probe.get("animated")))      # 多账号自动挑人时，调用方要能知道用的是谁
+            if _probe.get("svg"):
+                payload.setdefault("svg", True)
+                payload.setdefault("svg_animated", bool(_probe.get("svg_animated")))
         if not r.get("ok"):
             from . import why as _why
 
@@ -1214,6 +1330,8 @@ def cmd_gen(a) -> int:
 
     if r.get("ok"):
         _extra = " · 动图 %d 帧" % r.get("frames", 1) if r.get("animated") else ""
+        if r.get("svg"):
+            _extra = " · SVG 矢量" + ("（含动效）" if r.get("svg_animated") else "（静态）")
         if r.get("note"):
             print("  注意：%s" % r["note"], file=sys.stderr)
         print("已保存 %s  %s%s" % (r["path"], r.get("size") or "", _extra))
@@ -1358,8 +1476,46 @@ def _gif_prompt(p: str) -> str:
     return t.rstrip() + "\n（输出为 2–3 秒无缝循环的 GIF 动图，不要静态图。）"
 
 
+def _svg_prompt(p: str, anim: bool = False) -> str:
+    """要 SVG 文件时补一句。
+
+    2026-11-07 网页版实测：只说"画个图标"会出位图；只说"SVG"它可能
+    贴一整段代码块。明确要「.svg 文件附件」才会给文件卡片。要动效还得
+    点名 SMIL / @keyframes，否则给的是静态矢量图。
+    """
+    t = p or ""
+    need = ["请把结果作为单个 .svg 文件附件交付，不要只贴代码块、不要给文字描述、"
+            "不要导出成 PNG 或 GIF"]
+    if "svg" not in t.lower() and "矢量" not in t:
+        need.insert(0, "输出为原生 SVG 矢量文件（SVG 1.1 XML）")
+    if anim:
+        need.append("文件内部用 SMIL <animate>/<animateTransform> 或 CSS @keyframes "
+                    "实现无缝循环动效，透明背景，动画全部内嵌在这一个 .svg 里，不依赖外部资源")
+    return t.rstrip() + "\n（" + "；".join(need) + "。）"
+
+
+def _svg_flags(a) -> tuple[bool, bool]:
+    """(要不要 svg, 要不要动效)。``--svg-anim`` 隐含 ``--svg``。"""
+    anim = bool(getattr(a, "svg_anim", False))
+    return (bool(getattr(a, "svg", False)) or anim), anim
+
+
 def _items_from(a) -> list:
     from .core.models import Item
+
+    svg, svg_anim = _svg_flags(a)
+    if svg and getattr(a, "gif", False):
+        raise cfg_mod.ConfigError(
+            "--svg / --svg-anim 不能和 --gif 一起用：一个要矢量文件，一个要位图动图；"
+            "要会动的矢量图用 --svg-anim。")
+    alpha = bool(a.alpha) and not svg     # SVG 天然透明，抠图对它没意义
+
+    def _prep(p, *, anim=False, is_svg=False, sa=False):
+        if anim:
+            p = _gif_prompt(p)
+        if is_svg:
+            p = _svg_prompt(p, sa)
+        return p
 
     if a.shots:
         # `--shots 4`（张数）和 `--shots shots.json`（清单）都要认。
@@ -1373,10 +1529,12 @@ def _items_from(a) -> list:
                 raise cfg_mod.ConfigError("--shots 张数要大于 0")
             if not (a.prompt or "").strip():
                 raise cfg_mod.ConfigError("--shots %d 需要配一句提示词：bampiao submit \"画面\" --shots %d" % (n, n))
-            _p = _gif_prompt(a.prompt.strip()) if getattr(a, "gif", False) else a.prompt.strip()
+            _p = _prep(a.prompt.strip(), anim=bool(getattr(a, "gif", False)),
+                       is_svg=svg, sa=svg_anim)
             return [Item(id="S%02d" % i, prompt=_p,
-                         aspect=a.aspect, alpha=bool(a.alpha),
-                         anim=bool(getattr(a, "gif", False)))
+                         aspect=a.aspect, alpha=alpha,
+                         anim=bool(getattr(a, "gif", False)),
+                         svg=svg, svg_anim=svg_anim)
                     for i in range(1, n + 1)]
 
         raw = json.loads(Path(val).read_text(encoding="utf-8"))
@@ -1392,14 +1550,26 @@ def _items_from(a) -> list:
             if getattr(a, "gif", False):
                 it.anim = True
                 it.prompt = _gif_prompt(it.prompt)
+            # 命令行 --svg 覆盖清单；清单里自己写了 svg 的也认
+            it.svg = bool(svg or it.svg)
+            it.svg_anim = bool(svg_anim or it.svg_anim)
+            if it.svg_anim:
+                it.svg = True
+            if it.svg and getattr(a, "gif", False):
+                raise cfg_mod.ConfigError("第 %d 条同时要 SVG 和 GIF，只能二选一" % i)
+            if it.svg:
+                it.prompt = _svg_prompt(it.prompt, it.svg_anim)
+                it.alpha = False
             out.append(it)
         return out
 
     if not a.prompt:
         raise cfg_mod.ConfigError("给个提示词，或者用 --shots 投一批")
-    _p = _gif_prompt(a.prompt) if getattr(a, "gif", False) else a.prompt
-    return [Item(id="S01", prompt=_p, aspect=a.aspect, alpha=bool(a.alpha),
-                 anim=bool(getattr(a, "gif", False)))]
+    _p = _prep(a.prompt, anim=bool(getattr(a, "gif", False)),
+               is_svg=svg, sa=svg_anim)
+    return [Item(id="S01", prompt=_p, aspect=a.aspect, alpha=alpha,
+                 anim=bool(getattr(a, "gif", False)),
+                 svg=svg, svg_anim=svg_anim)]
 
 
 def desktop_exe() -> Path | None:
@@ -2417,6 +2587,10 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--alpha", action="store_true", help="要透明底（会追加洋红底要求）")
     p.add_argument("--gif", action="store_true",
                    help="要动图（Images 2.6 的循环 GIF）；会给提示词补一句并核对帧数")
+    p.add_argument("--svg", action="store_true",
+                   help="要 .svg 矢量文件（网页版以文件附件交付，不是图片 blob）")
+    p.add_argument("--svg-anim", action="store_true",
+                   help="要会动的 SVG（内含 SMIL/CSS 动效），自动按 --svg 处理")
     p.add_argument("--timeout", type=int, default=600)
     p.add_argument("--json", action="store_true")
     p.set_defaults(func=cmd_gen)
@@ -2445,6 +2619,10 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--alpha", action="store_true", help="要透明底")
     p.add_argument("--gif", action="store_true",
                    help="要动图（GIF）；会给每条提示词补一句并核对帧数")
+    p.add_argument("--svg", action="store_true",
+                   help="要 .svg 矢量文件（网页版以文件附件交付，不是图片 blob）")
+    p.add_argument("--svg-anim", action="store_true",
+                   help="要会动的 SVG（内含 SMIL/CSS 动效），自动按 --svg 处理")
     p.add_argument("--request-id", default="", help="幂等键：同一个值不会重复投单")
     p.add_argument("--submitter", default="cli", help="谁投的（cli / ui / agent:xxx）")
     p.add_argument("--json", action="store_true")

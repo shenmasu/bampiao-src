@@ -93,6 +93,7 @@ _PROBE_JS = """async () => {
   return {url: location.href, title: document.title, composer,
           logged_in: !!user,
           user_id: user ? String(user.id).slice(0, 12) : null,
+          email: user ? (user.email || null) : null,
           expires: expires};
 }"""
 STATE = os.path.join(_DATA, "state", "driver_state.json")
@@ -655,6 +656,218 @@ async def blob_srcs(pg):
             .filter(i=>(i.src||'').startsWith('blob:') && i.naturalWidth>300).map(i=>i.src)""")
     except Exception:
         return []
+
+
+# ---- SVG 旁路（2026-11-07）----------------------------------------------
+# 实测：ChatGPT 网页版让它"导出 SVG"时，交付的不是 <img src="blob:">，
+# 而是 Code Interpreter 的**文件卡片**（assistant 回合里一个有 title="x.svg"
+# 的附件）。真身在 /backend-api/.../interpreter/download → download_url。
+# 原来的 blob_srcs / wait_img / save_img 一条都碰不到它，会白等 600 秒判无图。
+# 所以这里整套独立：只在 item 带 "svg": true 时启用，原图片流程一字不改。
+
+JS_SVG_TURNS = """() => [...document.querySelectorAll('[data-talvt-turn-state]')].map(t => {
+    const a = t.querySelector('[data-content-search-unit-key$=":assistant"]') || t;
+    const box = t.querySelector('[data-content-search-unit-key$=":user"]') || t;
+    const names = [...a.querySelectorAll('[title]')]
+        .map(x => (x.getAttribute('title')||'').trim())
+        .filter(n => /\\.svg$/i.test(n));
+    if (!names.length) {
+        for (const b of a.querySelectorAll('button[aria-label]')) {
+            const m = (b.getAttribute('aria-label')||'').match(/([\\w\\-. ]+\\.svg)/i);
+            if (m && !names.includes(m[1].trim())) names.push(m[1].trim());
+        }
+    }
+    // 开场白说「不要额外解释」时，网页常常**不渲染文件卡片**，只在正文里
+    // 留一行 /mnt/data/xxx.svg（2026-11-07 真机实测）。这种也要认。
+    // 只认像文件名的串：不能把提示词里的「单个 .svg 文件」当成文件名。
+    const txt = a.innerText || '';
+    for (const m of txt.matchAll(/(?:\\/mnt\\/data\\/|\\b)([A-Za-z0-9_\\-]{2,}\\.svg)\\b/gi)) {
+        const n = m[1];
+        if (n && !names.includes(n)) names.push(n);
+    }
+    const mids = [...a.querySelectorAll('[data-dil-message-id]')]
+        .map(x => x.getAttribute('data-dil-message-id')).filter(Boolean);
+    // 没有卡片时 [data-dil-message-id] 也常常不在；这两个属性是页面自带的兜底
+    for (const sel of ['[data-chatgpt-selection-message-id]',
+                       '[data-chatgpt-search-message-ids]']) {
+        for (const x of t.querySelectorAll(sel)) {
+            const v = x.getAttribute(sel === '[data-chatgpt-selection-message-id]'
+                ? 'data-chatgpt-selection-message-id' : 'data-chatgpt-search-message-ids');
+            if (v && /^[0-9a-f-]{20,}$/i.test(v) && !mids.includes(v)) mids.push(v);
+        }
+    }
+    const inline = [...a.querySelectorAll('pre, code')]
+        .map(c => (c.innerText||'').trim())
+        .filter(s => /<svg[\\s>]/i.test(s)).slice(0, 2);
+    return {
+        s: t.getAttribute('data-talvt-turn-state'),
+        u: (box.innerText || '').slice(0, 200),
+        a: (a.innerText || '').slice(0, 400),
+        imgs: [], uimgs: [], aimgs: [],
+        files: [...new Set(names)],
+        mids: mids,
+        inline: inline,
+    };
+})"""
+
+
+async def svg_turns(pg):
+    """返回形状兼容 ``find_turn`` 的回合列表，附带 .svg 文件卡片信息。"""
+    try:
+        return await pg.evaluate(JS_SVG_TURNS)
+    except Exception:
+        return []
+
+
+_FETCH_SVG_JS = """async ([cid, mid, name]) => {
+    let tok = '';
+    try { tok = (await (await fetch('/api/auth/session', {credentials:'include'})).json()).accessToken || ''; }
+    catch (e) {}
+    const h = {};
+    if (tok) h['Authorization'] = 'Bearer ' + tok;
+    // DOM 里找不到 message_id 时，从会话接口取最后一条 assistant 消息的 id。
+    // 实测这种「只有一行 /mnt/data/xxx.svg」的回合，卡片和 dil-message-id
+    // 都不渲染，但会话接口里有（2026-11-07）。
+    if (!mid) {
+        try {
+            const cr = await fetch('/backend-api/conversation/' + cid,
+                                   {credentials:'include', headers:h});
+            const cj = await cr.json();
+            const map = cj.mapping || {};
+            const ids = Object.keys(map).filter(k =>
+                map[k].message && map[k].message.author &&
+                map[k].message.author.role === 'assistant');
+            if (ids.length) mid = ids[ids.length - 1];
+        } catch (e) {}
+    }
+    if (!mid) return {err: '拿不到 message_id'};
+    const q = '/backend-api/conversation/' + cid + '/interpreter/download'
+        + '?download_intent=false&message_id=' + encodeURIComponent(mid)
+        + '&sandbox_path=' + encodeURIComponent('/mnt/data/' + name);
+    let url = '', body = '';
+    try {
+        const r = await fetch(q, {credentials:'include', headers:h});
+        body = await r.text();
+        let j = {}; try { j = JSON.parse(body); } catch (e) {}
+        url = j.download_url || '';
+        if (!url && r.status !== 200) return {err: 'download API HTTP ' + r.status};
+    } catch (e) { return {err: 'download API: ' + String(e)}; }
+    if (!url) return {err: (body || 'download API 没给 URL').slice(0, 160)};
+    const r2 = await fetch(url, {credentials:'include'});
+    if (!r2.ok) return {err: '内容 HTTP ' + r2.status};
+    return {text: await r2.text(), mime: r2.headers.get('content-type') || 'image/svg+xml',
+            name: name};
+}"""
+
+
+_SVG_NAME_RE = re.compile(
+    r"(?:/mnt/data/|\b)([A-Za-z0-9_\-]{2,}\.svg)\b", re.I)
+
+
+def svg_names_from_text(text: str) -> list[str]:
+    """从助手正文里捞 .svg 文件名（Python 侧兜底，JS 选择器漏了还能救）。
+
+    刻意只认"像文件名"的串：提示词里「单个 .svg 文件附件」这种不能算文件名，
+    否则会拿一个叫 ``.svg`` 的假名去问接口，白等一轮。
+    """
+    out: list[str] = []
+    for m in _SVG_NAME_RE.finditer(text or ""):
+        n = m.group(1)
+        if n not in out:
+            out.append(n)
+    return out
+
+
+async def fetch_svg_file(pg, name, mid, cid):
+    """把网页上的 .svg 附件取回文本。失败返回 ``{"err": ...}``，绝不抛。"""
+    try:
+        return await pg.evaluate(_FETCH_SVG_JS, [cid, mid, name])
+    except Exception as e:
+        return {"err": str(e)[:120]}
+
+
+def save_svg(fn: str, text: str) -> str:
+    """SVG 是文本，按 UTF-8 原样落盘（BOM/换行不动）。返回实际路径。"""
+    path = str(fn)
+    if not path.lower().endswith(".svg"):
+        path += ".svg"
+    os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
+    with open(path, "w", encoding="utf-8", newline="") as f:
+        f.write(text)
+    return path
+
+
+async def wait_svg(pg, task, timeout=600):
+    """等本任务回合里出现 .svg 文件卡片，取回内容。
+
+    返回 ``(text, name)``；没拿到返回 ``(None, 理由)``。
+    这是 SVG 专用等待，不复用 ``wait_img``——那边只认 blob 图，
+    也别往那边塞分支，免得把已经很脆的位图流程弄坏。
+    """
+    t0 = time.time()
+    last = ""
+    while time.time() - t0 < timeout:
+        await pg.wait_for_timeout(2000)
+        turns = await svg_turns(pg)
+        t = find_turn(turns, task)
+        if t and t.get("inline"):
+            # 模型直接把 <svg>…</svg> 贴在代码块里：不用碰接口，收下就行
+            return t["inline"][0], "inline.svg"
+        if t:
+            cid = (pg.url or "").rstrip("/").split("/")[-1]
+            names = list(t.get("files") or [])
+            # JS 拿不到文件名时，Python 侧再从正文捞一次（页面改版也不至于瞎等）
+            for extra in svg_names_from_text(t.get("a") or ""):
+                if extra not in names:
+                    names.append(extra)
+            mids = [m for m in (t.get("mids") or []) if m] + [""]
+            for name in names:
+                # 模型刚写完代码、文件还没落到沙箱时会返回 file_not_found，
+                # 下一轮就能取到；多个 message_id 都试一遍（DOM 属性有时是用户消息的）。
+                for mid in mids:
+                    got = await fetch_svg_file(pg, name, mid, cid)
+                    if got.get("text"):
+                        log(f"    .. {task} 拿到 SVG 附件 {name}（{len(got['text'])} 字符）")
+                        return got["text"], name
+                    if not got.get("err"):
+                        got["err"] = "空内容"
+                    if got["err"] != last:
+                        last = got["err"]
+                        log(f"    .. {task} SVG 附件取回失败：{got['err']}")
+        # 正文里已经出现 .svg 路径（或文件卡片）时，哪怕回合标记 complete，
+        # 也只是"模型说完了"，文件可能还没写进沙箱：继续重试到超时，别提前判死。
+        has_svg_hint = bool(t and (
+            t.get("files") or t.get("inline") or svg_names_from_text(t.get("a") or "")))
+        if t and t["s"] == "complete" and not has_svg_hint:
+            a = (t["a"] or "").replace("ChatGPT 说：", "").strip()
+            if any(w in a for w in ("达到上限", "上限", "稍后", "limit", "Limit", "用量已达")):
+                QUOTA_HIT["v"] = True
+                try:
+                    _hint, _ = await reset_hint(pg, a)
+                    if _hint:
+                        QUOTA_HIT["reset_at"] = _hint
+                except Exception:
+                    pass
+                log(f"    !! QUOTA {task} 疑似达到生成上限")
+                return None, "quota"
+            if len(a) >= 4 and any(w in a for w in ("抱歉", "违反", "无法", "不能", "sorry", "can't")):
+                log(f"    !! {task} 被拒答: {a[:50]}")
+                return None, "refused"
+            # 模型偶尔把 SVG 直接贴在代码块里，兜底收下
+            if t.get("inline"):
+                return t["inline"][0], "inline.svg"
+            if time.time() - t0 > 90:
+                log(f"    !! {task} 回合结束但没给 SVG 文件，跳过")
+                return None, "no-svg-file"
+        el = time.time() - t0
+        if el % 30 < 2.5:
+            st = f"{t['s']}|{len(t.get('files') or [])}文件" if t else "no-turns"
+            log(f"    .. {task} SVG {int(el)}s 本项={st}")
+        try:
+            await pg.mouse.wheel(0, 700)
+        except Exception:
+            pass
+    return None, "timeout"
 
 
 async def save_img(pg, src, fn):
@@ -1342,7 +1555,9 @@ async def main():
         for idx, it in enumerate(items):
             key = it["id"]
             task = it["task"]
-            if st.get(key) == "ok" and media_mod.find_output(args.out, key, task):
+            want_svg = bool(it.get("svg"))
+            if st.get(key) == "ok" and media_mod.find_output(
+                    args.out, key, task, include_svg=want_svg):
                 continue
             # 不带后缀：save_img 按 blob 的 MIME 决定 .png / .gif
             fn = os.path.join(args.out, f"{key}_{task}")
@@ -1358,11 +1573,12 @@ async def main():
                     "方便后期把背景抠成透明。）")
             # 重跑同一项时，先把这一项自己的旧图 hash 从查重集合里去掉，
             # 否则新图会因为和旧图相似被判「重复」而永远过不了。
-            _old = media_mod.find_output(args.out, key, task)
+            _old = media_mod.find_output(args.out, key, task, include_svg=want_svg)
             if _old:
                 try:
                     known.discard(dhash(_old))
                 except Exception:
+                    # SVG 是 XML，Pillow 的 dhash 打不开；SVG 单本来也不做位图查重
                     pass
             if args.rotate and sent_count and sent_count % args.rotate == 0:
                 log("  -- 换新对话 --")
@@ -1472,6 +1688,42 @@ async def main():
                 if not carried:
                     # 发送前已经确认附件在输入框里，这里超时多半只是消息渲染慢，不再直接丢弃
                     log(f"    .. {task} 回合里暂未渲染出参考图，继续等待出图（发送前已确认附件存在）")
+
+            # ---- SVG 独立分支：文件附件，不是 blob 图 ----
+            # 走完就 continue，绝不落到下面的 wait_img / save_img / is_good，
+            # 那三处全是按位图写的（Pillow 打开 XML 必炸）。
+            if want_svg:
+                text, why = await wait_svg(pg, task, timeout=args.timeout)
+                if text:
+                    from .quality import is_good_svg
+
+                    path = save_svg(fn, text)
+                    good, note = is_good_svg(path, anim=bool(it.get("anim")))
+                    if good:
+                        st[key] = "ok"; ok += 1
+                        if note:
+                            flags[key] = note
+                        log(f"  [{idx+1}/{len(items)}] {task} OK SVG {os.path.basename(path)}"
+                            + (f"（标注：{note}）" if note else ""))
+                    else:
+                        st[key] = "quality"; fail += 1
+                        log(f"  [{idx+1}/{len(items)}] {task} SVG 质检 {note}")
+                else:
+                    st[key] = "fail"; fail += 1
+                    log(f"  [{idx+1}/{len(items)}] {task} 没拿到 SVG（{why}）")
+                json.dump(st_all, open(STATE, "w", encoding="utf-8"),
+                          ensure_ascii=False, indent=1)
+                if QUOTA_HIT["v"]:
+                    left = len(items) - idx - 1
+                    if left > 0:
+                        log(f"  !! 已撞生成上限，本批剩余 {left} 张不再尝试")
+                        for _it in items[idx + 1:]:
+                            st_all[_it["id"]] = "quota-skip"
+                        fail += left
+                        json.dump(st_all, open(STATE, "w", encoding="utf-8"),
+                                  ensure_ascii=False, indent=1)
+                    break
+                continue
 
             src = await wait_img_or_lost(pg, before, task, known, timeout=args.timeout,
                          want=it.get("aspect"), need_alpha=bool(it.get("alpha")),

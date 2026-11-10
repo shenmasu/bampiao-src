@@ -52,7 +52,10 @@ def _default_runner(cfg, acc, item, dest) -> Outcome:
     title = ("R%s·%s" % (jid, item.id)) if jid.isdigit() else item.id
     r = sess.generate(cfg, acc, item.prompt, dest,
                       refs=item.refs, aspect=item.aspect, alpha=item.alpha, title=title,
-                      anim=bool(item.anim))
+                      anim=bool(item.anim),
+                      # SVG 旁路：默认 False，老单子走的路径一字不变
+                      svg=bool(getattr(item, "svg", False)),
+                      svg_anim=bool(getattr(item, "svg_anim", False)))
     if r.get("ok"):
         # 交付文件可能不是 .png（GIF）：以实际落盘的名字为准。
         # 以前固定 dest.name，批量出 GIF 时记录会指向不存在的 S01.png（2026-11-06 评审）。
@@ -244,6 +247,20 @@ class Coordinator:
                 "jobs": touched, "busy": len(self._busy)}
 
     # ------------------------------------------------------------ 跑一单
+    def _save_progress(self, job: M.Job) -> None:
+        """每跑完一张就把进度写盘。**面板读的是磁盘，不是这块内存。**
+
+        2026-11-07 用户反馈：跑 9 张时进度一直停在 0/9，要么等到全跑完直接跳 9/9，
+        要么中途断了显示"4/9 5 失败"，从来见不到 1/9。
+        根子就在这里——以前只在"换号/忙/没通道"这几个分支 save，正常出图成功
+        和普通失败都是 continue 走了，磁盘上的 manifest 一直是开局那份。
+        一条一写（几 KB 的 JSON，毫秒级），换来的是进度真的在动。
+        """
+        try:
+            self.store.save(job)
+        except Exception as e:            # 写盘失败绝不能把这一单带崩
+            print("R%d 进度没写下去（不影响出图）：%r" % (job.id, e))
+
     def _run_job(self, job: M.Job, acc: cfg_mod.Account) -> dict:
         job_dir = self.store.dir_of(job.id)
         job_dir.mkdir(parents=True, exist_ok=True)
@@ -284,10 +301,16 @@ class Coordinator:
                 item.reason = ("参考图文件不存在：%s（改文件路径，改提示词没用）"
                                % missing[0])[:200]
                 job.reason = item.reason
+                self._save_progress(job)
                 continue
             if refs:
                 item.refs = refs          # 统一成绝对路径往下传，驱动不用再猜 CWD
             dest = job_dir / ("%s.png" % item.id)
+            # 2026-11-10 用户反馈：一次跑 9 张时，详情页只能看到数字，看不出
+            # "现在正在画哪一张、哪些已经好了"。先把当前这张标成 running 落盘，
+            # 面板每 2 秒读一次磁盘，就能显示"第 1 张完成预览、第 2 张出图中、其余排队"。
+            item.status = M.ITEM_RUNNING
+            self._save_progress(job)
             try:
                 out = self.runner(self.cfg, acc, item, dest)
             except Exception as e:      # runner 自己崩了也要落一条，不能让整单悬空
@@ -320,6 +343,7 @@ class Coordinator:
                 # 用独立字段：note 可能还留着上一次失败的原因，混在一起会误导。
                 item.reason = str(out.reason or "")[:300]
                 job.quality_note = str(out.reason or "")[:400]
+                self._save_progress(job)
                 continue
 
             # 环境类失败（Cloudflare 验证 / 页面卡住 / 发不出去）**自动换号再来**。
@@ -428,6 +452,7 @@ class Coordinator:
                 # 别让"它不肯画"混进"没画出来"：两者给用户的建议完全相反
                 item.error_code = "CONTENT_POLICY"
             job.reason = item.reason
+            self._save_progress(job)
 
         finished = self.store.finish(job, error_code=stop_reason)
         if finished.rendered:

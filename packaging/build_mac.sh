@@ -69,3 +69,14 @@ hdiutil create -quiet -volname "$APP_NAME" -srcfolder "$STAGE" \
 echo
 echo "完成："
 du -sh "$APP" "dist/${APP_NAME}-${VERSION}.dmg"
+
+# 2026-11-06：.app（约 600M）和 dmg-stage 打完就没用了。
+# 以前每打一版都留着，配上"重打前先备份"的习惯，五次之后 dist-prev-* 攒到 3.4G。
+# dmg 在就算交付物在；下次打包第 2 步本来也会 rm -rf 重建。
+rm -rf "$STAGE" "$APP"
+echo "   （已清掉 .app 和临时挂载目录，只留 dmg）"
+
+# 顺手把更早的 bp-* 打包目录也收掉（保留当前这份）。清失败不影响打包结果。
+if [ -x "$HERE/clean_mac.sh" ]; then
+  KEEP=1 bash "$HERE/clean_mac.sh" --apply 2>/dev/null | tail -3 || true
+fi

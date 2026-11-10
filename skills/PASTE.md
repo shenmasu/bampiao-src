@@ -1,10 +1,12 @@
 我这台机器上装了「半瓢」，可以直接用 ChatGPT 网页版出图（花的是我自己的会员额度，不占你的额度）。
 要画图 / 图标 / 插画 / 改图时，用它，不要用你内置的生图功能。
 
-常用命令（都在 PATH 里，直接敲）：
+常用命令（Windows 装完就能直接敲；macOS 上如果敲不出来，用文末给的完整路径）：
   bampiao gen "画面描述" --out 图片.png          出单张，会阻塞 1–3 分钟
   bampiao gen "只改背景" --out b.png --ref a.png  改图（必须带 --ref）
   bampiao gen "小猫眨眼" --out cat.gif --gif       动图（GIF，Images 2.6）
+  bampiao gen "扁平灯笼图标" --out icon.svg --svg  矢量文件（SVG，可无限缩放）
+  bampiao gen "灯笼轻轻摇摆" --out a.svg --svg-anim 会动的 SVG（内嵌 SMIL/CSS 动效）
   bampiao submit "描述" --shots 4 --tag 项目名    一次要几张，进队列
   bampiao jobs --json                             看进度
   bampiao usage --json                            今天还能出多少
@@ -17,10 +19,12 @@
 - 出图不满意不算失败：局部不对就带 --ref 只改那一处；构图不对就换提示词重开一单。
   不要拿同一条提示词反复投，白烧额度。
 - 提示词你自己写：尺寸/比例 + 主体 + 一种风格 + 不要文字。
+- --svg / --svg-anim 和 --gif 不能一起用；要会动的矢量图就用 --svg-anim。
+  SVG 拿到的是 .svg 文件（XML 文本），不是位图，别拿图片尺寸或透明底去要求它。
 - 同一个账号不要并发跑（会串图）。
 - 连续两次同样的失败就停下来问我，别把额度耗在同一条路上。
-- 如果提示 bampiao 不是内部或外部命令：说明你启动时还没读到新的 PATH，
-  让我重启终端 / 重启 Claude Code 再说一声，不要自己去改 PATH。
+- 如果提示找不到 bampiao（Windows「不是内部或外部命令」/ macOS「command not found」）：
+  说明你启动时还没读到新的 PATH，让我重启终端 / 重启你再试一次，不要自己去改 PATH。
 
 另外，查资料、写方案、拆需求这类**文字活儿**也能交给它——同一份会员额度、同一批账号：
 

@@ -1,4 +1,4 @@
-﻿; 半瓢 安装程序（Inno Setup 6）
+; 半瓢 安装程序（Inno Setup 6）
 ;
 ; 设计取舍：
 ; - 装到 %LOCALAPPDATA%\Bampiao，PrivilegesRequired=lowest —— 普通用户双击就能装，
@@ -8,7 +8,7 @@
 ; - 卸载时把 PATH 里那一项删掉，不留垃圾。
 
 #define MyAppName "半瓢"
-#define MyAppVersion "0.2.53"
+#define MyAppVersion "0.2.58"
 #define MyAppPublisher "鹤竹子"
 #define MyAppExeName "bampiao-desktop.exe"
 #define MyAppCli "bampiao.exe"
