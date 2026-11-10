@@ -1,40 +1,40 @@
-# Bampiao / 半瓢
+# 半瓢
 
-**A personal, non-commercial, open-source local CLI for using your own browser session with your own AI assistant.**
+**一个给中国用户看的开源项目：把本机 AI 助手的「画一张」，接到你自己已登录的浏览器会话上。**
 
-Bampiao is an independent, unofficial project. It is not affiliated with, endorsed by, or operated by OpenAI, ChatGPT, GitHub, or any browser vendor. It does not provide accounts, credentials, API keys, paid access, or a hosted service. It does not bypass access controls, rate limits, login requirements, or service terms. Use it only in ways permitted by the services you access and only with accounts you are authorized to use.
+半瓢是个人、非商业、非官方的本地命令行工具。它与 OpenAI、ChatGPT、GitHub 及浏览器厂商没有隶属、授权或合作关系，也不代表它们的立场。本项目不提供账号、凭据、密钥、付费权限或托管服务；不绕过登录、访问控制、频率限制、人机验证或服务条款。请只在相关服务允许、且你本人有权使用账号的前提下使用。
 
-> **Project website and faster updates:** <https://hezhuzi.com/bampiao/>.  
-> New builds, release notes, and user-facing instructions are published there first. This repository is a source-only snapshot for learning, review, and building from source; it may lag behind the website.
+> **项目主页与更快的更新：** <https://hezhuzi.com/bampiao/>  
+> 新安装包、更新记录和使用说明会先发在网站；本仓库是供学习、审阅与自行构建的公开源码快照，可能比网站慢一拍。
 
-## What this is
+## 这是什么
 
-A local command-line utility and queue that lets a user's own AI assistant request an image through the user's own, already-signed-in browser session. Configuration, logs, and generated files stay on the user's machine.
+它是一套装在本机的命令行工具和任务队列：让你自己的 AI 助手，通过你自己已登录的浏览器会话，发起一次图像生成请求。配置、日志和生成的文件都留在你自己的机器上。
 
-This repository contains a **source-only public snapshot** from the project's committed development tree. It omits deployment tooling, private operating notes, account-profile data, and some optional utilities. It is not a release channel, an installer, or a guarantee that a third-party web interface will remain compatible.
+本仓库只放**公开源码快照**，不是发布渠道，也不是安装包。内部运维脚本、私有操作记录、账号数据与部分可选模块都刻意没有放进来。第三方网页随时可能改版，源码能读、能审，不保证长期兼容。
 
-## Responsible use
+## 请这样使用
 
-- Use only your own account and a valid subscription or access that you are authorized to use.
-- Do not share, sell, pool, automate registration of, or provide remote access to accounts.
-- Do not use this project for high-volume automation, a public API, or a commercial hosted service.
-- Respect all applicable service terms, rate limits, robots controls, and human verification steps.
-- Review the code before running it. Browser automation can break when a website changes.
+- 只用你自己的账号，并确认你有权使用该账号及其服务权益。
+- 不共享、不转借、不出售账号，不做号池，不自动注册，不对外提供远程账号访问。
+- 不用于高频批量、公开接口或商业托管服务。
+- 遵守相关服务条款、频率限制和人机验证要求；遇到验证请由本人处理。
+- 运行前先看代码。网页自动化可能因页面改版而失效，请自行判断风险。
 
-## Status and source
+## 当前状态
 
-The source snapshot corresponds to development version **0.2.53**. It is provided for transparency and personal study. Build and test instructions are in [`BUILD-README.md`](BUILD-README.md); third-party licenses are in [`THIRD_PARTY.md`](THIRD_PARTY.md).
+这份源码快照对应开发版本 **0.2.53**，用于项目透明度和个人学习。构建与测试说明见 [`BUILD-README.md`](BUILD-README.md)，第三方许可见 [`THIRD_PARTY.md`](THIRD_PARTY.md)。
 
-Some optional modules are intentionally omitted from this public snapshot. The repository does not include a release binary, update manifest, account data, keys, tokens, or browser profiles. If you build from source, you are responsible for your own environment and compliance.
+仓库不含发布用二进制包、更新清单、账号数据、密钥、令牌或浏览器 profile。自行构建时，请自己负责环境和合规。
 
-## Website and releases
+## 官网与更新
 
-For current builds, documentation, and the fastest updates, visit <https://hezhuzi.com/bampiao/>. The website is the primary release channel; this repository is the open-source source snapshot.
+最新安装包、文档和最快的更新都看 <https://hezhuzi.com/bampiao/>。网站是主要发布渠道，本仓库是开源源码快照。
 
-## License
+## 许可
 
-MIT. See [`LICENSE`](LICENSE). Third-party components remain under their own licenses.
+半瓢源码采用 MIT 许可，见 [`LICENSE`](LICENSE)。第三方组件仍按各自许可使用。
 
-## Trademarks
+## 名称说明
 
-ChatGPT and OpenAI are trademarks or service marks of their respective owners. References here are descriptive only and do not imply affiliation or endorsement.
+ChatGPT、OpenAI、GitHub 等名称归各自权利人所有。文中提及仅用于说明兼容对象，不表示关联或背书。

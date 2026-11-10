@@ -5,12 +5,12 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "bampiao"
 version = "0.2.53"
-description = "Bampiao: an unofficial, personal, local CLI source snapshot"
+description = "半瓢：个人、非商业、非官方的本地命令行工具源码快照"
 readme = "README.md"
 requires-python = ">=3.12"
 license = { text = "MIT" }
 authors = [{ name = "鹤竹子" }]
-keywords = ["local-tool", "cli", "source-snapshot"]
+keywords = ["半瓢", "本地工具", "命令行", "开源源码"]
 classifiers = [
   "Development Status :: 3 - Alpha",
   "Environment :: Win32 (MS Windows)",
@@ -43,6 +43,7 @@ bampiao-desktop = "image2_bampiao.desktop:main"
 
 [project.urls]
 Homepage = "https://hezhuzi.com/bampiao/"
+Repository = "https://github.com/shenmasu/bampiao-src"
 Changelog = "https://hezhuzi.com/bampiao/#log"
 
 [tool.setuptools]
@@ -59,4 +60,3 @@ packages = [
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-Repository = "https://github.com/shenmasu/bampiao-src"
