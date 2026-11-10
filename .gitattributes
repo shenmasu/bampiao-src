@@ -1,0 +1,16 @@
+# 统一换行：仓库里存 LF，检出时按平台
+* text=auto eol=lf
+
+# Windows 脚本必须 CRLF（cmd.exe / PowerShell 5.1 对 LF 的支持不稳）
+*.ps1 text eol=crlf
+*.cmd text eol=crlf
+*.bat text eol=crlf
+
+# 二进制，别做任何转换
+*.png binary
+*.jpg binary
+*.ico binary
+*.whl binary
+*.zip binary
+# shell 脚本必须是 LF：Windows 上编辑过再 scp 过去会 bad interpreter（真踩过）
+*.sh text eol=lf

@@ -1,0 +1,62 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "bampiao"
+version = "0.2.53"
+description = "Bampiao: an unofficial, personal, local CLI source snapshot"
+readme = "README.md"
+requires-python = ">=3.12"
+license = { text = "MIT" }
+authors = [{ name = "鹤竹子" }]
+keywords = ["local-tool", "cli", "source-snapshot"]
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "Environment :: Win32 (MS Windows)",
+  "Intended Audience :: End Users/Desktop",
+  "License :: OSI Approved :: MIT License",
+  "Programming Language :: Python :: 3.12",
+  "Topic :: Multimedia :: Graphics",
+]
+
+dependencies = [
+  "pywebview>=5.0",
+  "pystray>=0.19",
+  "pillow>=10.0",
+  "playwright>=1.40",
+  "numpy>=1.26",
+  "cryptography>=42",
+]
+
+[project.optional-dependencies]
+# pyinstaller 原来只在打包机上手动装，2026-11-04 重建 venv 时忘了，
+# 打出来一句 "No module named PyInstaller"。谁要打安装包，就得有它。
+dev = ["pytest>=8.0", "pyinstaller>=6.0"]
+
+[project.scripts]
+bampiao = "image2_bampiao.cli:main"
+
+# gui-scripts 在 Windows 上生成不带控制台的 exe；CLI 用 scripts。
+[project.gui-scripts]
+bampiao-desktop = "image2_bampiao.desktop:main"
+
+[project.urls]
+Homepage = "https://hezhuzi.com/bampiao/"
+Changelog = "https://hezhuzi.com/bampiao/#log"
+
+[tool.setuptools]
+packages = [
+  "image2_bampiao",
+  "image2_bampiao.platform",
+  "image2_bampiao.driver",
+  "image2_bampiao.core",
+  "image2_bampiao.ui",
+]
+
+[tool.setuptools.package-data]
+"image2_bampiao.ui" = ["static/*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+Repository = "https://github.com/shenmasu/bampiao-src"
