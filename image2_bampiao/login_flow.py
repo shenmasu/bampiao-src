@@ -19,17 +19,19 @@ from .driver import browser
 
 # 判据：有输入框（能直接对话）+ 有头像/账号菜单（确实登录了）
 _JS_STATE = """async () => {
-  let user = null, expires = null;
+  let user = null, acct = null, expires = null;
   try {
     const r = await fetch('/api/auth/session', {credentials: 'include'});
-    if (r.ok) { const j = await r.json(); user = (j && j.user) || null; expires = (j && j.expires) || null; }
+    if (r.ok) { const j = await r.json(); user = (j && j.user) || null;
+                acct = (j && j.account) || null; expires = (j && j.expires) || null; }
   } catch (e) {}
   const composer = !!document.querySelector('div.ProseMirror[contenteditable="true"]');
+  // 2026-11-11 实测：planType 在 session.account，不在 session.user。
   return {url: location.href, title: document.title, composer,
           logged_in: !!user,
           user_id: user ? String(user.id).slice(0, 12) : null,
           email: user ? (user.email || null) : null,
-          plan: (user && user.planType) || null,
+          plan: (acct && acct.planType) || (user && user.planType) || null,
           expires: expires};
 }"""
 

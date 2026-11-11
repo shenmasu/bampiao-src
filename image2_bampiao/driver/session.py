@@ -158,6 +158,31 @@ def _run(cfg: cfg_mod.Config, args: list[str], log_path: Path,
     return rc, tail
 
 
+def _record_plan(cfg: cfg_mod.Config, acc: cfg_mod.Account, out_dir: Path) -> None:
+    """把驱动带回来的订阅档位写回账号状态。
+
+    驱动每次出图都会打开 chatgpt.com 首页并读一次 session.account.planType，
+    结果放在 _result.json 的 plan 字段里。升级用户不用重新登录、不用手动开浏览器、
+    也不必等后台补扫（它要求浏览器开着）就能把档位补齐。
+    同进程顺序执行，和 coordinator 的账号收尾不会写冲突。
+    """
+    try:
+        res = json.loads((out_dir / "_result.json").read_text(encoding="utf-8"))
+        plan = str((res or {}).get("plan") or "").strip()
+        if not plan:
+            return
+        from ..core.store import Store
+
+        st = Store(cfg).account(acc.id)
+        if st.plan != plan:
+            st.plan = plan
+            st.plan_source = "session"
+            st.plan_checked_at = time.time()
+            Store(cfg).save_account(st)
+    except Exception:
+        pass
+
+
 def _classify(rc: int, out_dir: Path, tail: str) -> str:
     """失败归因。优先用驱动写的结构化结果，其次看它打的强标记，都不猜全文。
 
@@ -350,6 +375,8 @@ def _generate(cfg: cfg_mod.Config, acc: cfg_mod.Account, prompt: str, out: Path,
     args = _base_args(cfg, acc, out_dir, items, timeout, title)
     log = cfg.logs_dir / ("gen_%s_%d.log" % (acc.id, int(time.time())))
     rc, tail = _run(cfg, args, log, timeout + 180)
+
+    _record_plan(cfg, acc, out_dir)
 
     # 不能只认 *.png：Images 2.6 的 GIF 现在是 .gif（2026-11-06）。
     # .svg 只在明确出 SVG 的单子里才纳入扫描，其他单子的目录里就算混进

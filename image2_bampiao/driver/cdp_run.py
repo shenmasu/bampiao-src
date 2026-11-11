@@ -84,21 +84,27 @@ REF_FAIL = {"n": 0}        # 参考图没挂上（上传失败）
 
 # 登录态探针：只看会话接口 + 输入框，不看界面文案（文案会改、会翻译）。
 _PROBE_JS = """async () => {
-  let user = null, expires = null;
+  let user = null, acct = null, expires = null;
   try {
     const r = await fetch('/api/auth/session', {credentials: 'include'});
-    if (r.ok) { const j = await r.json(); user = (j && j.user) || null; expires = (j && j.expires) || null; }
+    if (r.ok) { const j = await r.json(); user = (j && j.user) || null;
+                acct = (j && j.account) || null; expires = (j && j.expires) || null; }
   } catch (e) {}
   const composer = !!document.querySelector('div.ProseMirror[contenteditable="true"]');
-  // planType 是 /api/auth/session 里已有的字段（backup.py 的 _JS_SESSION 早就在读）。
-  // 拿不到就返回 null，上层一律显示 unknown，绝不猜档位。
+  // ★ 2026-11-11 实测：planType 在 session.account 里，不在 session.user 里。
+  // 旧代码读 user.planType 永远返回 undefined，导致所有账号档位都是 unknown。
+  // 保留 user.planType 作为兼容兜底，拿不到就返回 null，上层显示 unknown，绝不猜。
   return {url: location.href, title: document.title, composer,
           logged_in: !!user,
           user_id: user ? String(user.id).slice(0, 12) : null,
           email: user ? (user.email || null) : null,
-          plan: (user && user.planType) || null,
+          plan: (acct && acct.planType) || (user && user.planType) || null,
           expires: expires};
 }"""
+# 本次运行从 chatgpt.com 会话里读到的订阅档位（account.planType）。
+# 每次出图都会打开首页，浏览器必然处于登录态——这是升级用户补齐档位最自然的时机，
+# 不用重新登录、不用额外启动浏览器、也不碰后台补扫的「绝不启动浏览器」约束。
+SESSION_PLAN = {"v": ""}
 STATE = os.path.join(_DATA, "state", "driver_state.json")
 ITEMS = os.path.join(_DATA, "state", "items.json")
 
@@ -296,6 +302,10 @@ def _write_result(out_dir, ok=0, fail=0, flags=None, states=None, extra=None) ->
     _extra = dict(extra or {})
     if QUOTA_HIT["v"] and QUOTA_HIT.get("reset_at"):
         _extra["reset_at"] = QUOTA_HIT["reset_at"]
+    # 顺手把档位带给上层（session._generate 会写回账号 state）。
+    # 所有出口（成功/失败/草稿）都带，只要打开首页时读到了。
+    if SESSION_PLAN["v"]:
+        _extra["plan"] = SESSION_PLAN["v"]
     result.write(out_dir, ok=ok, fail=fail, quota=bool(QUOTA_HIT["v"]),
                  paste_failed=int(PASTE_FAIL["n"]), flags=flags, states=states, extra=_extra)
 
@@ -1435,6 +1445,25 @@ async def main():
             except Exception:
                 body = ""
             log(f"页面文本: {body[:60]!r}")
+            # 顺手读一次订阅档位：每次出图都会走到这里，浏览器必然是登录态。
+            # 2026-11-11 实测 planType 在 session.account（不是 session.user）。
+            # 只读、同源、不新增对外请求；拿不到就留空，账号卡显示 unknown，不猜。
+            try:
+                plan = await pg.evaluate("""async () => {
+                  try {
+                    const r = await fetch('/api/auth/session', {credentials: 'include'});
+                    if (!r.ok) return '';
+                    const j = await r.json();
+                    const a = (j && j.account) || {};
+                    const u = (j && j.user) || {};
+                    return String(a.planType || u.planType || '');
+                  } catch (e) { return ''; }
+                }""")
+                if plan:
+                    SESSION_PLAN["v"] = str(plan).strip()[:32]
+                    log(f"订阅档位: {SESSION_PLAN['v']}")
+            except Exception:
+                pass
             # 有输入框就用当前会话，但**必须是空的**。
             # 2026-11-03 事故：chatgpt.com 会把上一单的对话恢复出来，程序接着用，
             # 于是 (a) 开场白发进旧对话、URL 不变，「开场确认」白等 120 秒；
