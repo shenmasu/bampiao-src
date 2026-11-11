@@ -8,7 +8,7 @@
 ; - 卸载时把 PATH 里那一项删掉，不留垃圾。
 
 #define MyAppName "半瓢"
-#define MyAppVersion "0.2.63"
+#define MyAppVersion "0.2.64"
 #define MyAppPublisher "鹤竹子"
 #define MyAppExeName "bampiao-desktop.exe"
 #define MyAppCli "bampiao.exe"
@@ -37,6 +37,13 @@ Compression=lzma2/max
 SolidCompression=yes
 WizardStyle=modern
 DisableWelcomePage=yes
+; 在线更新：安装器由 launcher 用 /VERYSILENT + CREATE_NO_WINDOW + SW_HIDE 拉起（update.py）。
+; 这里再关掉 Inno 自己的目录页/完成页/日志，双保险。
+; 注意：WindowVisible / WindowShowCaption 在 Inno 6.7 已废弃（编译会警告且被忽略），
+; 真正管用的是 /VERYSILENT + SW_HIDE，所以不写这两条。
+DisableDirPage=yes
+DisableFinishedPage=yes
+SetupLogging=no
 ; 安装前先给一段"这是什么、有什么风险"，比装完再解释有意义
 InfoBeforeFile=before-install.txt
 ; PATH 是环境变量，要通知系统刷新

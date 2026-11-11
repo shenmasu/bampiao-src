@@ -337,6 +337,38 @@ details.more summary::before{content:"＋";color:var(--zhu);margin-right:8px}
 details.more[open] summary::before{content:"－"}
 details.more .in{padding:0 0 14px;font-size:13px;color:var(--ink2);line-height:1.85}
 
+/* ── 设置页：偏好开关区（2026-11-11 重做，替换原来的「状态文字 + 裸文字按钮」） ── */
+.prefs{background:var(--sheet);border:1px solid var(--line);padding:4px 18px;box-shadow:2px 2px 0 rgba(34,31,26,.07)}
+.pref{display:flex;align-items:flex-start;gap:18px;padding:16px 0;border-bottom:1px dashed var(--line)}
+.pref:last-child{border-bottom:0}
+.pref .txt{flex:1;min-width:0}
+.pref .t{font:600 14px/1.4 var(--sans);color:var(--ink)}
+.pref .d{font-size:12.5px;color:var(--dim);line-height:1.7;margin-top:3px}
+.pref .d b{color:var(--ink2);font-weight:600}
+.sw{flex:none;position:relative;width:50px;height:28px;border-radius:99px;background:#D8D1C2;
+  border:1px solid #C4BBA8;cursor:pointer;transition:.18s;margin-top:2px;padding:0;outline:none}
+.sw::after{content:"";position:absolute;top:2px;left:2px;width:22px;height:22px;border-radius:50%;
+  background:#fff;box-shadow:0 1px 3px rgba(0,0,0,.22);transition:.18s}
+.sw.on{background:var(--lan);border-color:var(--lan)}
+.sw.on::after{left:25px}
+.sw:focus-visible{box-shadow:0 0 0 3px rgba(62,124,116,.28)}
+.sw[disabled]{opacity:.45;cursor:default}
+.swState{flex:none;width:32px;font-size:12px;color:var(--dim);text-align:right;line-height:28px;margin-top:2px}
+.swState.on{color:var(--lan);font-weight:600}
+
+/* 并行数步进器（替换裸 input + 裸按钮） */
+.stepper{display:inline-flex;align-items:center;border:1px solid var(--line2);background:var(--sheet);vertical-align:middle}
+.stepper button{width:32px;height:32px;border:0;background:none;font-size:17px;color:var(--ink2);cursor:pointer;line-height:1}
+.stepper button:hover{background:var(--paper)}
+.stepper button:disabled{opacity:.4;cursor:default}
+.stepper input{width:52px;height:32px;border:0;text-align:center;font:600 14px var(--mono);background:none;outline:none;color:var(--ink)}
+/* 设置页信息区（只读项）与偏好区分开，行不再混排 */
+.info{padding:2px 18px}
+.info .r{display:grid;grid-template-columns:92px 1fr;gap:16px;align-items:baseline;padding:11px 0;border-bottom:1px dashed var(--line)}
+.info .r:last-child{border-bottom:0}
+.info .k{color:var(--dim);font-size:13px}
+.info .v{font-size:13.5px;color:var(--ink);word-break:break-all}
+
 /* ── 抽屉 / 大图 / 弹窗 */
 .mask{position:fixed;inset:0;background:rgba(34,31,26,.32);opacity:0;pointer-events:none;transition:.18s;z-index:40}
 .mask.on{opacity:1;pointer-events:auto}
@@ -689,7 +721,7 @@ tr.row:focus-visible{background:var(--zhubg)}
     <div class="about">
       <p><b>半瓢让你的 AI 用你自己账号的 ChatGPT 网页版出图，不耗 Codex 额度。</b></p>
       <ul>
-        <li>前提：需要 ChatGPT 会员，Plus（20 美元/月）起；网页生图每天大约几百张上限。</li>
+        <li>前提：需要 ChatGPT 账号，Plus 会员每天约 150–930 张，免费版约 3–25 张。</li>
         <li>滥用可能导致封号，请合理使用。</li>
         <li>本软件仅供学习交流，请勿商业传播。</li>
       </ul>
@@ -721,25 +753,50 @@ tr.row:focus-visible{background:var(--zhubg)}
     <div class="sec" id="secConc" hidden>同时跑几个号</div>
     <div class="concBox" id="concBox" hidden>
       <div class="concRow">
-        <input type="number" id="concInput" min="1" step="1" value="2" aria-label="并行数">
+        <span class="stepper">
+          <button type="button" id="concMinus" aria-label="减少">−</button>
+          <input type="number" id="concInput" min="1" max="8" step="1" value="2" aria-label="并行数">
+          <button type="button" id="concPlus" aria-label="增加">＋</button>
+        </span>
         <span class="muted">个账号并行</span>
         <button class="btn sm" id="concSave">保存</button>
       </div>
-      <div class="say muted">有几个号最多就能并行几个；并行越多，同时开着的浏览器和内存也越多（13 个号实测约 2.5 GB）。改完要重启半瓢才生效。</div>
+      <div class="say muted">有几个号最多就能并行几个（最多 8 个）；并行越多，同时开着的浏览器和内存也越多（13 个号实测约 2.5 GB）。改完要重启半瓢才生效。</div>
     </div>
     <div class="sec">跑在哪</div>
-    <dl class="kvs">
-      <dt>数据目录</dt><dd id="sDir" title="点一下打开这个文件夹" style="cursor:pointer;text-decoration:underline dotted">读取中…</dd>
-      <dt>队列</dt><dd id="sPause">–</dd>
-      <dt>异常记录</dt><dd id="sCrash" style="cursor:pointer">–</dd>
-      <dt>开机自启</dt><dd><span id="sAuto">读取中…</span>　<button class="lk" id="sAutoTog" disabled>…</button></dd>
-      <dt>崩溃后自动拉起</dt><dd><span id="sWatch">读取中…</span>　<button class="lk" id="sWatchTog" disabled>…</button>
-        <div class="say muted" style="margin:4px 0 0">默认关。打开后，半瓢整个进程崩了会在 5 分钟内自己回来；关着时退出就是真退出。</div></dd>
-      <dt>自动更新</dt><dd><span id="sAutoUpd">读取中…</span>　<button class="lk" id="sAutoUpdTog" disabled>…</button>
-        <div class="say muted" style="margin:4px 0 0">默认开。新版本后台下好后，等你没在出图时自动升级，留 10 秒可取消；装完自动重新打开。</div></dd>
-      <dt>版本</dt><dd><span id="sVer">读取中…</span>　<button class="lk" id="sCheck">检查更新</button>
-        <div id="sUpd" class="upd" hidden></div></dd>
-    </dl>
+    <div class="info">
+      <div class="r"><div class="k">数据目录</div><div class="v"><span id="sDir" title="点一下打开这个文件夹" style="cursor:pointer;text-decoration:underline dotted;text-underline-offset:3px">读取中…</span></div></div>
+      <div class="r"><div class="k">队列</div><div class="v" id="sPause">–</div></div>
+      <div class="r"><div class="k">异常记录</div><div class="v"><span id="sCrash" style="cursor:pointer">–</span></div></div>
+      <div class="r"><div class="k">版本</div><div class="v"><span id="sVer">读取中…</span>　<button class="lk" id="sCheck">检查更新</button><div id="sUpd" class="upd" hidden></div></div></div>
+    </div>
+    <div class="sec">偏好</div>
+    <div class="prefs">
+      <div class="pref">
+        <div class="txt">
+          <div class="t">开机自启</div>
+          <div class="d">开机时半瓢会自动启动。</div>
+        </div>
+        <div class="swState" id="stAuto">读…</div>
+        <button class="sw" id="swAuto" role="switch" aria-checked="false" aria-label="开机自启" disabled></button>
+      </div>
+      <div class="pref">
+        <div class="txt">
+          <div class="t">崩溃后自动拉起</div>
+          <div class="d">半瓢如果崩溃，会在 <b>5 分钟</b>内恢复进程。</div>
+        </div>
+        <div class="swState" id="stWatch">读…</div>
+        <button class="sw" id="swWatch" role="switch" aria-checked="false" aria-label="崩溃后自动拉起" disabled></button>
+      </div>
+      <div class="pref">
+        <div class="txt">
+          <div class="t">自动更新</div>
+          <div class="d">新版本将在空闲时自动升级。</div>
+        </div>
+        <div class="swState" id="stUpd">读…</div>
+        <button class="sw" id="swUpd" role="switch" aria-checked="false" aria-label="自动更新" disabled></button>
+      </div>
+    </div>
     <div class="sec">更多</div>
     <details class="more">
       <summary>作者与公众号</summary>
@@ -2013,71 +2070,77 @@ function renderSettings(){
 // 开机自启：以前装完默认就开，面板里却没有任何地方能关。2026-11-06 的反馈
 // 「半瓢好像会一直自己启动，我经常关掉它，然后不知道啥时候他又自己打开了」
 // 就是这么来的——用户以为关掉了，其实只是关掉窗口，而且他不知道去哪关自启。
+// 2026-11-11：改成真正的拨动开关（大点击区、开/关一眼可辨），后端调用不变。
+function _paintSwitch(swId, stId, on, busyText){
+  const sw=$(swId), st=$(stId);
+  if(!sw||!st) return;
+  sw.classList.toggle('on', !!on);
+  sw.setAttribute('aria-checked', on ? 'true' : 'false');
+  st.classList.toggle('on', !!on);
+  st.textContent = busyText || (on ? '开' : '关');
+}
 async function paintAutostart(){
-  const lab=$('#sAuto'), btn=$('#sAutoTog');
-  if(!lab||!btn) return;
+  const sw=$('#swAuto'), st=$('#stAuto');
+  if(!sw||!st) return;
   let r={};
   try{ r=await post({do:'autostart_get'}); }
-  catch(e){ lab.textContent='读不到状态'; btn.disabled=true; return; }
-  if(!r.ok){ lab.textContent=r.why||'读不到状态'; btn.disabled=true; return; }
+  catch(e){ st.textContent='读不到'; st.classList.remove('on'); sw.disabled=true; return; }
+  if(!r.ok){ st.textContent=r.why||'读不到'; st.classList.remove('on'); sw.disabled=true; return; }
   const on=!!r.enabled;
-  lab.textContent = on ? '开着的（开机会自己在后台跑）' : '关着的（要用时自己打开）';
-  btn.textContent = on ? '关掉它' : '打开';
-  btn.disabled = false;
-  btn.onclick = async()=>{
-    btn.disabled=true;
+  _paintSwitch('#swAuto','#stAuto',on);
+  sw.disabled = false;
+  sw.onclick = async()=>{
+    sw.disabled=true;
     try{
       const x=await post({do:'autostart_set', on:!on});
-      if(!x.ok){ toast(x.why||'没改成功'); btn.disabled=false; return; }
-      toast(on ? '好，下次开机不会自己起来了' : '好，下次开机会自动在后台跑');
+      if(!x.ok){ toast(x.why||'没改成功'); sw.disabled=false; return; }
+      toast(on ? '好，下次开机不会自己起来了' : '好，下次开机会自动启动');
       paintAutostart();
-    }catch(e){ toast(e.message); btn.disabled=false; }
+    }catch(e){ toast(e.message); sw.disabled=false; }
   };
 }
 // 崩溃后自动拉起：以前装完就自动注册一个每 5 分钟的看护任务，用户关掉进程
 // 五分钟后又被叫回来；测试/多实例时还会把任务指到 dist-win 的 exe 上，
 // 任务栏凭空多一个半瓢。2026-11-11 改成设置页里的显式开关，默认关。
 async function paintWatchdog(){
-  const lab=$('#sWatch'), btn=$('#sWatchTog');
-  if(!lab||!btn) return;
+  const sw=$('#swWatch'), st=$('#stWatch');
+  if(!sw||!st) return;
   let r={};
   try{ r=await post({do:'watchdog_get'}); }
-  catch(e){ lab.textContent='读不到状态'; btn.disabled=true; return; }
-  if(!r.ok){ lab.textContent=r.why||'读不到状态'; btn.disabled=true; return; }
+  catch(e){ st.textContent='读不到'; st.classList.remove('on'); sw.disabled=true; return; }
+  if(!r.ok){ st.textContent=r.why||'读不到'; st.classList.remove('on'); sw.disabled=true; return; }
   const on=!!r.enabled;
-  lab.textContent = on ? '开着的（崩了会自动拉回来）' : '关着的（退出就是真退出）';
-  btn.textContent = on ? '关掉它' : '打开';
-  btn.disabled = false;
-  btn.onclick = async()=>{
-    btn.disabled=true;
+  _paintSwitch('#swWatch','#stWatch',on);
+  sw.disabled = false;
+  sw.onclick = async()=>{
+    sw.disabled=true;
     try{
       const x=await post({do:'watchdog_set', on:!on});
-      if(!x.ok){ toast(x.why||'没改成功'); btn.disabled=false; return; }
-      toast(on ? '好，退出就是真退出，崩了也不会自己回来' : '好，崩了会自动拉回来');
+      if(!x.ok){ toast(x.why||'没改成功'); sw.disabled=false; return; }
+      toast(on ? '好，退出就是真退出，崩了也不会自己回来' : '好，崩了会在 5 分钟内恢复');
       paintWatchdog();
-    }catch(e){ toast(e.message); btn.disabled=false; }
+    }catch(e){ toast(e.message); sw.disabled=false; }
   };
 }
 // 自动更新：新版本后台下好后自动找空档应用，不用再点一下。默认开，可关。
 async function paintAutoUpdate(){
-  const lab=$('#sAutoUpd'), btn=$('#sAutoUpdTog');
-  if(!lab||!btn) return;
+  const sw=$('#swUpd'), st=$('#stUpd');
+  if(!sw||!st) return;
   let r={};
   try{ r=await post({do:'auto_update_get'}); }
-  catch(e){ lab.textContent='读不到状态'; btn.disabled=true; return; }
-  if(!r.ok){ lab.textContent=r.why||'读不到状态'; btn.disabled=true; return; }
+  catch(e){ st.textContent='读不到'; st.classList.remove('on'); sw.disabled=true; return; }
+  if(!r.ok){ st.textContent=r.why||'读不到'; st.classList.remove('on'); sw.disabled=true; return; }
   const on=!!r.enabled;
-  lab.textContent = on ? '开着的（下好后空闲自动升级）' : '关着的（要手动点更新）';
-  btn.textContent = on ? '关掉它' : '打开';
-  btn.disabled = false;
-  btn.onclick = async()=>{
-    btn.disabled=true;
+  _paintSwitch('#swUpd','#stUpd',on);
+  sw.disabled = false;
+  sw.onclick = async()=>{
+    sw.disabled=true;
     try{
       const x=await post({do:'auto_update_set', on:!on});
-      if(!x.ok){ toast(x.why||'没改成功'); btn.disabled=false; return; }
-      toast(on ? '好，以后要手动点更新' : '好，下好后空闲时会自动升级');
+      if(!x.ok){ toast(x.why||'没改成功'); sw.disabled=false; return; }
+      toast(on ? '好，以后要手动点更新' : '好，空闲时会自动升级');
       paintAutoUpdate();
-    }catch(e){ toast(e.message); btn.disabled=false; }
+    }catch(e){ toast(e.message); sw.disabled=false; }
   };
 }
 // ── 出图用哪个账号（三个卡片；只有一个号时整块不显示）
@@ -2095,13 +2158,20 @@ function paintConc(){
   if(lab) lab.textContent='个账号并行（最多 '+cap+'）';
 }
 (function bindConc(){
+  const inp=$('#concInput'), minus=$('#concMinus'), plus=$('#concPlus');
+  const cap=()=>Math.max(8, S.accountCount||0);
+  const clamp=v=>{ v=parseInt(v,10); if(!Number.isFinite(v)) v=1; return Math.max(1, Math.min(cap(), v)); };
+  if(inp){
+    if(minus) minus.onclick=()=>{ inp.value=clamp((parseInt(inp.value,10)||1)-1); };
+    if(plus)  plus.onclick =()=>{ inp.value=clamp((parseInt(inp.value,10)||1)+1); };
+    inp.addEventListener('change', ()=>{ inp.value=clamp(inp.value); });
+  }
   const btn=$('#concSave');
   if(!btn) return;
   btn.onclick=async()=>{
-    const inp=$('#concInput');
-    const n=parseInt(inp&&inp.value,10);
-    const cap=Math.max(8,S.accountCount||0);
-    if(!Number.isFinite(n)||n<1||n>cap){ toast('并行数要在 1–'+cap+' 之间'); return; }
+    const n=clamp(inp&&inp.value);
+    const capN=cap();
+    if(!Number.isFinite(n)||n<1||n>capN){ toast('并行数要在 1–'+capN+' 之间'); return; }
     btn.disabled=true;
     try{
       const r=await post({do:'config_set',key:'concurrency',value:n});

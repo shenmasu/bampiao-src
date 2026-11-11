@@ -302,13 +302,25 @@ def launch_installer(path: Path) -> int:
     """Windows：静默安装。返回安装器 pid，供调用方确认"它真的起来了"。
 
     安装程序会先关掉正在运行的半瓢，装完自己再打开（见 bampiao.iss）。
+
+    2026-11-11：此前用 DETACHED_PROCESS 拉起安装器，它脱离父进程、
+    不继承任何隐藏窗口设置，于是 setup.exe 会正常弹窗/闪任务栏图标——用户看得见。
+    现在改用 CREATE_NO_WINDOW + STARTUPINFO(SW_HIDE)，并升到 /VERYSILENT
+    （连进度条/背景都不画）+ /SP-（开头「正在准备安装」小窗也省掉），
+    安装器进程照常存在，但不再有任何窗口。
     """
     if sys.platform != "win32":
         raise RuntimeError("这个平台要手动打开下载好的安装包")
-    flags = 0x00000008 | 0x00000200          # DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP
-    p = subprocess.Popen([str(path), "/SILENT", "/SUPPRESSMSGBOXES", "/NORESTART",
-                          "/CLOSEAPPLICATIONS", "/FORCECLOSEAPPLICATIONS"],
-                         creationflags=flags, close_fds=True,
+    si = None
+    flags = 0
+    if hasattr(subprocess, "STARTUPINFO"):
+        si = subprocess.STARTUPINFO()
+        si.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+        si.wShowWindow = subprocess.SW_HIDE          # 0
+        flags |= 0x08000000                          # CREATE_NO_WINDOW：不给它建控制台窗口
+    p = subprocess.Popen([str(path), "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART",
+                          "/SP-", "/CLOSEAPPLICATIONS", "/FORCECLOSEAPPLICATIONS"],
+                         creationflags=flags, startupinfo=si, close_fds=True,
                          stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
                          stderr=subprocess.DEVNULL)
     return int(p.pid)
