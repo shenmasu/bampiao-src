@@ -29,6 +29,7 @@ _JS_STATE = """async () => {
           logged_in: !!user,
           user_id: user ? String(user.id).slice(0, 12) : null,
           email: user ? (user.email || null) : null,
+          plan: (user && user.planType) || null,
           expires: expires};
 }"""
 
@@ -249,6 +250,13 @@ def _mark_login_ok(cfg: cfg_mod.Config, acc: cfg_mod.Account, state: dict) -> No
         email = str((state or {}).get("email") or "").strip()
         if email:
             st.login_email = email
+        # 订阅档位：登录探针已经顺手带了 planType，落盘后账号卡直接显示。
+        # 没探到就留空（面板显示 unknown），不猜。
+        plan = str((state or {}).get("plan") or "").strip()
+        if plan:
+            st.plan = plan
+            st.plan_source = "session"
+            st.plan_checked_at = time.time()
         store.save_account(st)
     except Exception:
         # 状态记录失败不能影响"登录成功"这个事实本身

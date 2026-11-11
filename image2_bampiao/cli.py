@@ -698,11 +698,37 @@ def _pick_account(cfg, key: str | None):
         store_obj = Store(cfg)
     except Exception:
         pass
-    today_of = (lambda a: store_obj.account(a.id).stat_today) if store_obj else None
+    today_of = (lambda a: store_obj.account(a.id).today_count()) if store_obj else None
     load = store_obj.active_load() if store_obj else {}
     pending_of = (lambda a: load.get(a.id, 0)) if store_obj else None
+    # 2026-11-11：tier 策略要档位，连续失败降权要 fail_streak（带 2 小时衰减）；
+    # 不传这两个回调时 choose_by_strategy 行为与旧版一致。
+    plan_of = (lambda a: store_obj.account(a.id).plan) if store_obj else None
+    fail_of = (lambda a: store_obj.account(a.id).fail_streak_now()) if store_obj else None
 
-    acc = cfg_mod.choose_by_strategy(cfg, cfg.accounts, today_of, pending_of)
+    # 先滤掉"现在不能用"的号：bampiao gen 直出不经过 Coordinator 的
+    # usable_accounts()，不滤就会把冷却/掉登录/被验证挂起的号直接派去出图。
+    # 全都不能用时退回全量，让下游按老规矩报错，别在这里悄悄换语义。
+    candidates = cfg.accounts
+    if store_obj:
+        try:
+            from .driver import session_health as sh
+
+            usable = []
+            for a in cfg.accounts:
+                st = store_obj.account(a.id)
+                if st.cooling() or st.login == "required":
+                    continue
+                if sh.read_pause(str(cfg.data_dir), a.id):
+                    continue
+                usable.append(a)
+            if usable:
+                candidates = usable
+        except Exception:
+            pass
+
+    acc = cfg_mod.choose_by_strategy(cfg, candidates, today_of, pending_of,
+                                     plan_of, fail_of)
     if acc is not None:
         want = (getattr(cfg, "account_fixed_id", "") or "").strip()
         fixed_gone = ((getattr(cfg, "account_strategy", "") or "").strip().lower() == "fixed"
@@ -911,6 +937,11 @@ def cmd_probe(a) -> int:
             email = str(p.get("email") or "").strip()
             if email:
                 st.login_email = email
+            plan = str(p.get("plan") or "").strip()
+            if plan:
+                st.plan = plan
+                st.plan_source = "session"
+                st.plan_checked_at = __import__("time").time()
         else:
             st.login = "required"
         st.login_checked_at = __import__("time").time()
@@ -1454,6 +1485,20 @@ def _gen_record_end(cfg, rec, r: dict) -> None:
             it.log_path = str(r.get("log") or "")
             job.reason = it.reason
             job.note = it.note
+        # 连续失败计数：gen 直出不经过 Coordinator，必须在这里自己维护。
+        # 否则外部 Agent 反复重投 `bampiao gen` 时，坏号 stat_today 不涨、
+        # 永远"今天出图最少"被优先选中（2026-11-11 用户反馈）。
+        # quota / auth 已有专门的冷却与停用状态，不重复累加，避免双重惩罚。
+        try:
+            st = store.account(acc.id)
+            if r.get("ok") and r.get("path"):
+                st.fail_streak = 0
+            elif r.get("kind") not in ("quota", "auth"):
+                st.fail_streak = int(getattr(st, "fail_streak", 0) or 0) + 1
+                st.last_fail_at = time.time()
+            store.save_account(st)
+        except Exception:
+            pass
         job.finished_at = time.time()
         store.save(job)
     except Exception:
@@ -1672,16 +1717,28 @@ def _should_spread(a, items) -> bool:
 
 
 def _spread_accounts(cfg, n: int) -> list:
-    """把 n 张图分给账号：按"今天用得少"排序后轮流发（和 balance 策略同向）。"""
+    """把 n 张图分给账号：先按策略权重**排一次序**，再轮流发。
+
+    排序用和 config.choose_by_strategy 同一套权重（连续失败 > 档位 > 今天用量 > id），
+    但这里是「排一次序再轮流」，不是「每张都重挑最优」——否则 tier 策略下
+    n 张图会全压到同一个 Pro 号上，同一个号并发会串图（AGENTS.md 明令禁止）。
+    """
     try:
         from .core.store import Store
 
         st = Store(cfg)
-        today = lambda a: st.account(a.id).stat_today      # noqa: E731
+
+        def weight(a):
+            s = st.account(a.id)
+            p = str(s.plan or "").lower()
+            tier = (0 if "pro" in p else 1 if "plus" in p
+                    else 3 if "free" in p else 2)
+            return (s.fail_streak_now(), tier, s.today_count(), a.id)
     except Exception:
-        today = lambda a: 0                                # noqa: E731
-    order = sorted(cfg.accounts, key=lambda a: (today(a), a.id))
-    return [order[i % len(order)] for i in range(n)]
+        def weight(a):
+            return (0, 2, 0, a.id)
+    order = sorted(cfg.accounts, key=weight)
+    return [order[i % len(order)] for i in range(n)] if order else []
 
 
 def cmd_submit(a) -> int:

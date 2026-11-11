@@ -184,22 +184,44 @@ def watch_once() -> int:
         return 1
 
 
+WATCHDOG_TASK = "BampiaoWatchdog"
+
+
+def _desktop_exe_for_task() -> Path | None:
+    """找 GUI 桌面壳的 exe 给计划任务用。
+
+    不能直接用 sys.executable：面板也可能跑在 CLI 的 bampiao.exe 里，
+    那样注册出来的 --watch 会闪黑框；源码跑则是 python.exe，根本不是桌面壳。
+    """
+    try:
+        from . import autostart
+
+        e = autostart.desktop_exe()
+        if e and e.suffix.lower() == ".exe":
+            return e
+    except Exception:
+        pass
+    e = Path(sys.executable)
+    return e if e.suffix.lower() == ".exe" else None
+
+
 def ensure_watchdog_task() -> str:
     """确保「每 5 分钟看一眼」的计划任务在。返回一句话说明结果。
 
     用计划任务而不是常驻守护进程：守护进程自己也会死，而系统调度不会。
     用桌面壳的 exe（GUI 子系统）跑 --watch，不会闪黑框。
     创建用户级任务不需要管理员权限。
+    **只在用户主动打开开关时调用**（2026-11-11 起默认关）。
     """
     if sys.platform != "win32":
         return "非 Windows，跳过"
     try:
-        exe = Path(sys.executable)
-        if exe.suffix.lower() != ".exe":
-            return "源码运行，跳过"
+        exe = _desktop_exe_for_task()
+        if exe is None:
+            return "找不到桌面壳 exe，跳过"
         cmd = '"%s" --watch' % exe
         r = subprocess.run(
-            ["schtasks", "/Create", "/TN", "BampiaoWatchdog", "/SC", "MINUTE",
+            ["schtasks", "/Create", "/TN", WATCHDOG_TASK, "/SC", "MINUTE",
              "/MO", "5", "/TR", cmd, "/F", "/RL", "LIMITED"],
             capture_output=True, timeout=20,
             creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
@@ -215,6 +237,71 @@ def ensure_watchdog_task() -> str:
         return txt.strip()[:120] or "创建失败"
     except Exception as e:
         return str(e)[:120]
+
+
+def watchdog_opt_in_path() -> Path:
+    """「崩溃后自动拉起」的用户选择。只有设置页主动打开才写这个文件。"""
+    return _runtime_path().parent / "watchdog_opt_in.json"
+
+
+def watchdog_enabled() -> bool:
+    """默认关：没有 opt-in 记号就是关。"""
+    try:
+        return bool(json.loads(
+            watchdog_opt_in_path().read_text(encoding="utf-8")).get("on"))
+    except Exception:
+        return False
+
+
+def watchdog_task_exists() -> bool:
+    """系统里现在有没有这个计划任务。"""
+    if sys.platform != "win32":
+        return False
+    try:
+        r = subprocess.run(["schtasks", "/Query", "/TN", WATCHDOG_TASK],
+                           capture_output=True, timeout=10,
+                           creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+        return r.returncode == 0
+    except Exception:
+        return False
+
+
+def remove_watchdog_task() -> bool:
+    """删掉看护任务（幂等：本来就没有也算成功）。"""
+    if sys.platform != "win32":
+        return True
+    try:
+        r = subprocess.run(["schtasks", "/Delete", "/TN", WATCHDOG_TASK, "/F"],
+                           capture_output=True, timeout=15,
+                           creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+        return r.returncode == 0 or not watchdog_task_exists()
+    except Exception:
+        return False
+
+
+def set_watchdog_enabled(on: bool) -> tuple[bool, str]:
+    """设置页开关：写用户选择，并让系统状态和它一致。返回 (成功, 说明)。
+
+    打开时只在任务不存在时注册——已存在就别动，免得把用户正在用的任务
+    重指到另一个 exe 上（这两天任务栏多一个半瓢就是这么来的）。
+    """
+    p = watchdog_opt_in_path()
+    try:
+        p.parent.mkdir(parents=True, exist_ok=True)
+        if on:
+            p.write_text(json.dumps({"on": True, "at": time.time()}),
+                         encoding="utf-8")
+        else:
+            p.unlink(missing_ok=True)
+    except Exception as e:      # noqa: BLE001
+        return False, "记不住这个设置：%s" % str(e)[:80]
+    if on:
+        if watchdog_task_exists():
+            return True, "已打开（看护任务已在）"
+        note = ensure_watchdog_task()
+        return (True, "已打开") if note == "ok" else (False, note)
+    ok = remove_watchdog_task()
+    return (True, "已关掉") if ok else (False, "任务删不掉，稍后再试")
 
 
 def _runtime_path() -> Path:
@@ -1499,12 +1586,26 @@ def main(argv: list[str] | None = None) -> int:
     except Exception:
         pass
 
-    # 拿到锁之后再写看护任务：否则第二个实例会把任务重指到它自己的 exe 上
-    # （独立验收发现：便携版/测试实例跑起来会把计划任务改到别处）。
-    try:
-        _note("watchdog:%s" % ensure_watchdog_task())
-    except Exception:
-        pass
+    # 看门狗默认关（2026-11-11 用户拍板）：只有设置页主动打开才注册任务。
+    # 老版本自动建的任务，在升级后第一次启动时顺手清掉，否则「默认关」是假的。
+    # 自检 / 隔离数据目录的临时实例完全不碰任务——它会把任务指到 dist-win 里的
+    # 测试 exe，5 分钟后又被拉起来，用户任务栏凭空多一个半瓢（连着两天踩过）。
+    if a.selftest or os.environ.get("BAMPIAO_DATA"):
+        _note("watchdog:skipped (selftest / isolated data)")
+    elif not watchdog_enabled():
+        try:
+            if watchdog_task_exists():
+                remove_watchdog_task()
+                _note("watchdog:removed legacy task (opt-in off)")
+            else:
+                _note("watchdog:off (default)")
+        except Exception:
+            pass
+    else:
+        try:
+            _note("watchdog:%s" % ensure_watchdog_task())
+        except Exception:
+            pass
     # 手动启动了，说明用户想要它跑：撤掉「别自动叫回来」的标记
     _clear_user_quit()
 

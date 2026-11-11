@@ -95,6 +95,19 @@ class Coordinator:
         self._guard = threading.Lock()
 
     # ------------------------------------------------------------ 账号选择
+    def _strategy_callbacks(self):
+        """给 config.choose_by_strategy 的四个只读回调，统一从 store 取运行态。"""
+        try:
+            load = self.store.active_load()
+        except Exception:
+            load = {}
+        return (
+            lambda a: self.store.account(a.id).today_count(),
+            lambda a: load.get(a.id, 0),
+            lambda a: self.store.account(a.id).plan,
+            lambda a: self.store.account(a.id).fail_streak_now(),
+        )
+
     def usable_accounts(self) -> list[cfg_mod.Account]:
         """现在能用的账号：没在冷却、没被判掉登录、没被"需要人过验证"挂起。
 
@@ -142,7 +155,12 @@ class Coordinator:
         # 但换号不能换到"另一个 worker 正在用的号"上：那样两个 worker 会共用一个
         # CDP 页面，后到的那个只能拿到 busy 再弹回队列，等于白转一圈。
         # 上面已经把这些号排掉了，这里只需说明为什么换了。
-        alt = free[0]
+        # 不能写死 free[0]：那等于永远挑配置里的第一个号，一个号反复失败时
+        # 后面每一单（含换号）还是会压回它身上（2026-11-11 用户反馈）。
+        # 统一走 config.choose_by_strategy：连续失败降权 + 用户选的策略都生效。
+        from .. import config as cfg_mod
+        t, p, plan, fail = self._strategy_callbacks()
+        alt = cfg_mod.choose_by_strategy(self.cfg, free, t, p, plan, fail) or free[0]
         if job.account_id and alt.id != job.account_id:
             why = "正在跑别的单" if job.account_id in taken else "正在休息"
             try:
@@ -361,6 +379,10 @@ class Coordinator:
                     job.note = "在「%s」上没成（%s），自动换到「%s」重试（第 %d 次）" % (
                         acc.name, out.kind, alt.name, job.auto_hops)
                     self.store.save(job)
+                    # 这一支在 finish() 之前就 return 了，必须自己记一次失败，
+                    # 否则「风控验证没点」这类失败永远不进 fail_streak，
+                    # 下一单（尤其外部重投）还会挑回这个号（2026-11-11 用户反馈）。
+                    self._note_failure(acc)
                     print("R%d %s 在「%s」失败（%s）→ 自动换到「%s」重试"
                           % (job.id, item.id, acc.name, out.kind, alt.name))
                     return {"status": M.JOB_QUEUED}
@@ -460,6 +482,18 @@ class Coordinator:
         st = self.store.account(acc.id)
         st.login = "ok" if st.login != "required" else st.login
         st.last_used_at = time.time()
+        # 连续失败计数：出到图就清零，失败就累加。分配时用它降权，
+        # 这样外部 Agent 重投时不会再挑回这个一直撞风控/验证的号（2026-11-11）。
+        # 人手动「停下这张」不算账号故障，别误伤。
+        if finished.status == M.JOB_CANCELLED:
+            pass
+        elif finished.rendered and finished.status in (M.JOB_DONE, M.JOB_PARTIAL):
+            st.fail_streak = 0
+        elif (finished.status in (M.JOB_FAILED, M.JOB_PARTIAL)
+              and stop_reason not in (M.QUOTA_COOLDOWN, M.AUTH_REQUIRED)):
+            # quota / auth 已有专门的冷却与停用状态，再累加就是双重惩罚
+            st.fail_streak = int(getattr(st, "fail_streak", 0) or 0) + 1
+            st.last_fail_at = time.time()
         self.store.save_account(st)
         return {"status": finished.status, "rendered": finished.rendered}
 
@@ -525,6 +559,12 @@ class Coordinator:
         st.last_used_at = now
         if st.login == "required":
             st.login = "ok"
+        # 和出图单同一套连续失败计数，避免文本单把坏号的计数洗掉或漏记
+        if finished.status == M.JOB_DONE:
+            st.fail_streak = 0
+        elif finished.status == M.JOB_FAILED:
+            st.fail_streak = int(getattr(st, "fail_streak", 0) or 0) + 1
+            st.last_fail_at = now
         self.store.save_account(st)
         return {"status": finished.status, "rendered": finished.rendered}
 
@@ -561,15 +601,29 @@ class Coordinator:
             return None
         if not cands:
             return None
+        # 换号也要按同一套策略挑：别一换就换回那个连续失败/低档位的号。
+        from .. import config as cfg_mod
+        t, p, plan, fail = self._strategy_callbacks()
         try:
-            from .store import Store  # noqa: F401
-
-            cands.sort(key=lambda a: (self.store.account(a.id).stat_today, a.id))
+            return cfg_mod.choose_by_strategy(self.cfg, cands, t, p, plan, fail) or cands[0]
         except Exception:
-            pass
-        return cands[0]
+            return cands[0]
 
     # ------------------------------------------------------------ 账号状态
+    def _note_failure(self, acc: cfg_mod.Account) -> None:
+        """记一次账号级连续失败，给分配降权用。
+
+        只在「早退出、走不到 _run_job 收尾」的失败分支调用（自动换号那类），
+        正常走到 finish() 的失败由收尾统一处理，两边不会重复计数。
+        """
+        try:
+            st = self.store.account(acc.id)
+            st.fail_streak = int(getattr(st, "fail_streak", 0) or 0) + 1
+            st.last_fail_at = time.time()
+            self.store.save_account(st)
+        except Exception:
+            pass
+
     def _mark_quota(self, acc: cfg_mod.Account, job: M.Job, item: M.Item) -> None:
         st = self.store.account(acc.id)
         now = time.time()

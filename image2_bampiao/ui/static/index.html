@@ -181,7 +181,9 @@ code{background:#ECEAE4;border-radius:0;padding:0 4px;font:12px var(--mono)}
 
 /* 在跑 */
 .runs{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:10px;margin-bottom:16px}
-.rc{background:var(--sheet);border:1px solid var(--line);border-left:3px solid var(--qing);padding:11px 14px;box-shadow:2px 2px 0 rgba(34,31,26,.07)}
+.rc{background:var(--sheet);border:1px solid var(--line);border-left:3px solid var(--qing);padding:11px 14px;box-shadow:2px 2px 0 rgba(34,31,26,.07);cursor:pointer}
+.rc:hover{border-left-color:var(--lan)}
+.rc:focus-visible{outline:2px solid var(--lan);outline-offset:2px}
 .rc .t{display:flex;gap:8px;align-items:center;font-size:13px}
 .rc .t b{font-family:var(--mono)}
 .rc .b{color:var(--ink2);font-size:13px;margin:4px 0 8px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
@@ -252,7 +254,8 @@ textarea:focus,input:focus,select:focus{border-color:var(--ink2)}
 /* 浏览器用图标，不再写 Chrome / Edge 两个字；取不到图标（如 macOS）自动退回文字 */
 .acc .br img{width:15px;height:15px;vertical-align:-3px;border-radius:3px;opacity:.85}
 .acc .br i{font-style:normal;display:none}
-.acc .who{font-size:12.5px;color:var(--dim);margin:2px 0 0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.acc .whoRow{display:flex;align-items:center;gap:6px;margin:2px 0 0;min-height:17px}
+.acc .who{font-size:12.5px;color:var(--dim);margin:0;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .acc .kv{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin:12px 0 10px;background:#F6F5F1;padding:8px 10px}
 .acc .kv div{}
 .acc .kv b{display:block;font:600 15px/1.3 var(--mono)}
@@ -261,6 +264,20 @@ textarea:focus,input:focus,select:focus{border-color:var(--ink2)}
 .acc .say.zhu{color:var(--zhu)}.acc .say.huang{color:var(--huang)}
 .acc .ops{margin-top:auto;display:flex;align-items:center;gap:12px;padding-top:8px;border-top:1px dashed var(--line)}
 .acc .ops .btn{margin-right:auto}
+/* 订阅档位小标签：unknown = 没探到，绝不猜（已过期的 Plus 也可能只显示 free） */
+.pl{font:600 10.5px/1 var(--mono);padding:3px 6px;border:1px solid var(--line2);
+  border-radius:3px;color:var(--dim);background:#F6F5F1;white-space:nowrap;letter-spacing:.02em}
+.pl.free{color:#6B6459;background:#F1F0EC}
+.pl.plus{color:#1F6B4F;background:#EAF5EE;border-color:#BFE0CC}
+.pl.pro{color:#2B4C8C;background:#ECF1FA;border-color:#C6D6F0}
+.pl.unk{color:var(--faint);background:transparent;border-style:dashed}
+.accs.dense .pl{font-size:9.5px;padding:2px 5px}
+/* 并行数设置 */
+.concBox{margin:0 0 14px}
+.concRow{display:flex;align-items:center;gap:10px;margin-bottom:8px;flex-wrap:wrap}
+.concRow input{width:76px;padding:6px 8px;border:1px solid var(--line2);background:var(--sheet);
+  font:600 14px var(--mono);color:var(--ink)}
+.concBox .say{margin:0}
 .acc.wait{border-color:var(--zhuline);background:#FFF8F5}
 .spin{width:14px;height:14px;border:2px solid var(--zhuline);border-top-color:var(--zhu);border-radius:50%;
   display:inline-block;animation:sp 0.9s linear infinite;vertical-align:-2px;margin-right:6px}
@@ -694,7 +711,21 @@ tr.row:focus-visible{background:var(--zhubg)}
         <span class="sd"></span>
         <span class="st"><b>固定一个</b><i>一直用你选的那个，不管额度</i></span>
       </label>
+      <label class="scard" data-v="tier">
+        <input type="radio" name="acctStrat" value="tier">
+        <span class="sd"></span>
+        <span class="st"><b>按等级</b><i>Pro 先上，然后 Plus，最后免费版；连续失败的号自动靠边</i></span>
+      </label>
       <select id="stratFixed" class="stratSel" hidden></select>
+    </div>
+    <div class="sec" id="secConc" hidden>同时跑几个号</div>
+    <div class="concBox" id="concBox" hidden>
+      <div class="concRow">
+        <input type="number" id="concInput" min="1" step="1" value="2" aria-label="并行数">
+        <span class="muted">个账号并行</span>
+        <button class="btn sm" id="concSave">保存</button>
+      </div>
+      <div class="say muted">有几个号最多就能并行几个；并行越多，同时开着的浏览器和内存也越多（13 个号实测约 2.5 GB）。改完要重启半瓢才生效。</div>
     </div>
     <div class="sec">跑在哪</div>
     <dl class="kvs">
@@ -702,6 +733,10 @@ tr.row:focus-visible{background:var(--zhubg)}
       <dt>队列</dt><dd id="sPause">–</dd>
       <dt>异常记录</dt><dd id="sCrash" style="cursor:pointer">–</dd>
       <dt>开机自启</dt><dd><span id="sAuto">读取中…</span>　<button class="lk" id="sAutoTog" disabled>…</button></dd>
+      <dt>崩溃后自动拉起</dt><dd><span id="sWatch">读取中…</span>　<button class="lk" id="sWatchTog" disabled>…</button>
+        <div class="say muted" style="margin:4px 0 0">默认关。打开后，半瓢整个进程崩了会在 5 分钟内自己回来；关着时退出就是真退出。</div></dd>
+      <dt>自动更新</dt><dd><span id="sAutoUpd">读取中…</span>　<button class="lk" id="sAutoUpdTog" disabled>…</button>
+        <div class="say muted" style="margin:4px 0 0">默认开。新版本后台下好后，等你没在出图时自动升级，留 10 秒可取消；装完自动重新打开。</div></dd>
       <dt>版本</dt><dd><span id="sVer">读取中…</span>　<button class="lk" id="sCheck">检查更新</button>
         <div id="sUpd" class="upd" hidden></div></dd>
     </dl>
@@ -842,7 +877,8 @@ async function loadOverview(){
   S.runs=d.runs||[];
   S.ver=d.version||'';
   S.crashes=d.crashes||0;
-  paintUpdate(d.update||{});
+  S.update=d.update||{};          // 轮询要据此判断「自动升级倒计时中」
+  paintUpdate(S.update);
   S.dataDir=d.data_dir||'';
   S.onboarded=!!d.onboarded;
   S.summary=d.summary||{};
@@ -857,6 +893,11 @@ async function loadOverview(){
   }catch(e){}
   S.accounts=d.accounts||[];
   S.idleRecycleMin=d.idle_recycle_min||10;
+  S.concurrency=d.concurrency||1;
+  S.accountCount=d.account_count||0;
+  S.account_strategy=d.account_strategy||'balance';
+  S.account_fixed_id=d.account_fixed_id||'';
+  paintConc();
   S.browsers=d.browsers||[];
   const active=(d.summary.queued||0)+(d.summary.running||0);
   $('#tabJobsN').textContent=active?active:'';
@@ -899,6 +940,18 @@ function accState(a){
   if(a.login==='required') return 'lost';
   return 'new';
 }
+// 订阅档位：只按 session 里的 planType 归类，拿不到就 unknown，绝不猜。
+// 已过期的 Plus 和从没订阅过的 free 在现有数据里长得一样，不硬判「已过期」。
+function planLabel(p){
+  const s=String(p||'').trim(), l=s.toLowerCase();
+  if(!s) return {text:'unknown',cls:'unk'};
+  if(l.includes('pro')) return {text:'Pro',cls:'pro'};
+  if(l.includes('plus')) return {text:'Plus',cls:'plus'};
+  if(l.includes('free')) return {text:'free',cls:'free'};
+  if(l.includes('team')||l.includes('business')||l.includes('enterprise'))
+    return {text:s.slice(0,8),cls:'pro'};
+  return {text:s.slice(0,8),cls:'unk'};
+}
 function renderAccounts(list){
   const el=$('#accs');
   // 账号多时自动紧凑：13 个号按 270px 一列要 5 行，紧凑后 3 行能看全
@@ -915,6 +968,7 @@ function renderAccounts(list){
   const cards=list.map(a=>{
     const k=accState(a), ph=a.login_phase||{};
     const who=a.email||ph.email||'';
+    const pl=planLabel(a.plan);
     const brw=a.browser==='chrome'?'Chrome':(a.browser==='edge'?'Edge':esc(a.browser));
     let say='', main='';
     if(k==='wait'){
@@ -938,11 +992,12 @@ function renderAccounts(list){
         ?`<button class="lk" data-hide="${esc(a.id)}">收起浏览器</button>`
         :`<button class="lk" data-show="${esc(a.id)}" title="看看这个号的 ChatGPT 页面；平时它静默在后台">打开浏览器</button>`)
       +(a.browser_running?`<button class="lk" data-close="${esc(a.id)}" data-name="${esc(a.name)}" title="彻底结束浏览器进程，释放内存；下次出图会自动重开，登录信息不丢">关掉浏览器</button>`:'')
+      +(who?'':`<button class="lk" data-fill="${esc(a.id)}" title="临时打开这个号的浏览器，读一次登录邮箱并写回">补邮箱</button>`)
       +(list.length>1?`<button class="lk danger" data-rm="${esc(a.id)}" data-name="${esc(a.name)}">删除</button>`:'');
     return `<div class="acc ${k==='wait'?'wait':''}">
       <div class="top"><span class="st ${k==='ok'?'done':(k==='cool'?'partial':(k==='wait'||k==='lost'?'failed':'queued'))}"></span>
         <span class="nm" title="点铅笔改名">${esc(a.name)}<button class="editnm" data-edit="${esc(a.id)}" data-name="${esc(a.name)}" title="改名">✎</button></span><span class="br" title="${brw}"><img src="/api/browser_icon?b=${esc(a.browser)}" alt="" onerror="this.style.display='none';var t=this.parentNode.querySelector('i');if(t)t.style.display='inline'"><i>${brw}</i></span></div>
-      ${who?`<div class="who">${esc(who)}</div>`:''}
+      <div class="whoRow">${who?`<span class="who">${esc(who)}</span>`:''}<span class="pl ${pl.cls}" title="订阅档位（来源：${esc(a.plan_source||'未记录')}）">${pl.text}</span></div>
       ${a.window_ok===false?`<div class="say zhu">浏览器进程还在但窗口没了（假死）。点「打开浏览器」会自动重启它。</div>`:''}
       ${a.paused_min>0?`<div class="say zhu">这个号被挂起约 ${a.paused_min} 分钟（多半是 Cloudflare 验证）。点「打开浏览器」处理，收起后自动恢复。</div>`:''}
       <div class="kv">
@@ -998,6 +1053,10 @@ function renderAccounts(list){
     if(!confirm('关掉「'+(b.dataset.name||'')+'」的浏览器？下次出图会自动重新打开，登录信息不会丢。')) return;
     act({do:'browser_down',account:b.dataset.close},b,'正在关…','浏览器已关掉');
   });
+  // 老账号没邮箱：用户点一下才为「这一个号」临时拉起浏览器读回邮箱，
+  // 后台补扫线程仍然绝不自己启动浏览器（账号页刷新不能拉起 13 个号）。
+  $$('#accs [data-fill]').forEach(b=>b.onclick=()=>
+    act({do:'backfill_email',account:b.dataset.fill},b,'正在补…','邮箱已补上'));
   // 改名：不再弹 prompt 对话框，直接在名字上改（回车保存、Esc 取消、点别处也算保存）。
   // S.editing 期间 loadOverview 不重绘账号卡，否则 3 秒一次的轮询会把人打的字冲掉。
   $$('#accs [data-edit]').forEach(b=>b.onclick=e=>{
@@ -1350,7 +1409,7 @@ function renderRunning(runs){
     const hint=alive===false
       ? `<div class="m" style="color:var(--dim)"><span>没有进程在画了，90 秒内会自动标成「不确定」</span></div>`
       : (alive===null?'<div class="m"><span>看不到进程状态，稍等它会自己更新</span></div>':'');
-    return `<div class="rc${alive===false?' stale':''}"><div class="t"><b>R${x.id}</b>${badge}
+    return `<div class="rc${alive===false?' stale':''}" data-id="${x.id}" tabindex="0" role="button" aria-label="打开 R${x.id} 详情"><div class="t"><b>R${x.id}</b>${badge}
         <span class="muted" style="margin-left:auto">${esc(S.accName[x.ran_on||x.account_id]||x.ran_on||x.account_id)}</span></div>
       <div class="b">${esc(x.brief||'（没有说明）')}</div>
       <div class="bar"><i style="width:${pct}%"></i></div>
@@ -1365,6 +1424,13 @@ function renderRunning(runs){
       toast(r.ok?'已经停下了':'没停下：'+(r.why||''));
       loadOverview(); loadJobs();
     }).catch(()=>{ b.disabled=false; b.textContent='停下这张' });
+  });
+  // 整张卡可点开详情：overview 已把在跑任务 id 返回，openJob 原生支持 running/queued，
+  // 抽屉开着时每 2 秒自动刷新。排除「停下这张」，否则点它会同时弹抽屉。
+  $$('#runs .rc[data-id]').forEach(el=>{
+    const open=(ev)=>{ if(ev.target.closest('[data-stop]')) return; openJob(+el.dataset.id); };
+    el.onclick=open;
+    el.onkeydown=(ev)=>{ if(ev.key==='Enter'||ev.key===' '){ev.preventDefault();open(ev)} };
   });
 }
 function pager(total,off){
@@ -1938,6 +2004,8 @@ function renderSettings(){
   $('#sCrash').textContent = cr ? ('有 ' + cr + ' 次异常，点这里看日志') : '没有';
   $('#sCrash').onclick = () => cr && act({do:'open_data', sub:'logs'}, null, null, '已打开日志文件夹');
   paintAutostart();
+  paintWatchdog();
+  paintAutoUpdate();
 }
 
 // 开机自启：以前装完默认就开，面板里却没有任何地方能关。2026-11-06 的反馈
@@ -1964,7 +2032,86 @@ async function paintAutostart(){
     }catch(e){ toast(e.message); btn.disabled=false; }
   };
 }
+// 崩溃后自动拉起：以前装完就自动注册一个每 5 分钟的看护任务，用户关掉进程
+// 五分钟后又被叫回来；测试/多实例时还会把任务指到 dist-win 的 exe 上，
+// 任务栏凭空多一个半瓢。2026-11-11 改成设置页里的显式开关，默认关。
+async function paintWatchdog(){
+  const lab=$('#sWatch'), btn=$('#sWatchTog');
+  if(!lab||!btn) return;
+  let r={};
+  try{ r=await post({do:'watchdog_get'}); }
+  catch(e){ lab.textContent='读不到状态'; btn.disabled=true; return; }
+  if(!r.ok){ lab.textContent=r.why||'读不到状态'; btn.disabled=true; return; }
+  const on=!!r.enabled;
+  lab.textContent = on ? '开着的（崩了会自动拉回来）' : '关着的（退出就是真退出）';
+  btn.textContent = on ? '关掉它' : '打开';
+  btn.disabled = false;
+  btn.onclick = async()=>{
+    btn.disabled=true;
+    try{
+      const x=await post({do:'watchdog_set', on:!on});
+      if(!x.ok){ toast(x.why||'没改成功'); btn.disabled=false; return; }
+      toast(on ? '好，退出就是真退出，崩了也不会自己回来' : '好，崩了会自动拉回来');
+      paintWatchdog();
+    }catch(e){ toast(e.message); btn.disabled=false; }
+  };
+}
+// 自动更新：新版本后台下好后自动找空档应用，不用再点一下。默认开，可关。
+async function paintAutoUpdate(){
+  const lab=$('#sAutoUpd'), btn=$('#sAutoUpdTog');
+  if(!lab||!btn) return;
+  let r={};
+  try{ r=await post({do:'auto_update_get'}); }
+  catch(e){ lab.textContent='读不到状态'; btn.disabled=true; return; }
+  if(!r.ok){ lab.textContent=r.why||'读不到状态'; btn.disabled=true; return; }
+  const on=!!r.enabled;
+  lab.textContent = on ? '开着的（下好后空闲自动升级）' : '关着的（要手动点更新）';
+  btn.textContent = on ? '关掉它' : '打开';
+  btn.disabled = false;
+  btn.onclick = async()=>{
+    btn.disabled=true;
+    try{
+      const x=await post({do:'auto_update_set', on:!on});
+      if(!x.ok){ toast(x.why||'没改成功'); btn.disabled=false; return; }
+      toast(on ? '好，以后要手动点更新' : '好，下好后空闲时会自动升级');
+      paintAutoUpdate();
+    }catch(e){ toast(e.message); btn.disabled=false; }
+  };
+}
 // ── 出图用哪个账号（三个卡片；只有一个号时整块不显示）
+// 同时跑几个号：上限 = 账号数（config.parse 同口径），改完要重启才生效。
+function paintConc(){
+  const sec=$('#secConc'), box=$('#concBox');
+  if(!sec||!box) return;
+  const n=S.accountCount||0;
+  sec.hidden=n<2; box.hidden=n<2;
+  if(n<2) return;
+  const cap=Math.max(8,n);
+  const inp=$('#concInput');
+  if(inp){ inp.max=cap; inp.value=S.concurrency||1; }
+  const lab=$('#concBox .concRow .muted');
+  if(lab) lab.textContent='个账号并行（最多 '+cap+'）';
+}
+(function bindConc(){
+  const btn=$('#concSave');
+  if(!btn) return;
+  btn.onclick=async()=>{
+    const inp=$('#concInput');
+    const n=parseInt(inp&&inp.value,10);
+    const cap=Math.max(8,S.accountCount||0);
+    if(!Number.isFinite(n)||n<1||n>cap){ toast('并行数要在 1–'+cap+' 之间'); return; }
+    btn.disabled=true;
+    try{
+      const r=await post({do:'config_set',key:'concurrency',value:n});
+      if(!r.ok){ toast(r.why||'没改成功'); return; }
+      S.concurrency=n;
+      toast('并行数已改成 '+n+'（重启半瓢后生效）');
+      paintConc();
+    }catch(e){ toast('没改成功：'+e.message); }
+    finally{ btn.disabled=false; }
+  };
+})();
+
 function paintStrat(){
   const sec=$('#secStrat'), box=$('#stratPick');
   if(!sec||!box) return;
@@ -2017,7 +2164,7 @@ function paintStrat(){
         }
       }
       paintStrat();
-      toast('已切换：'+({balance:'自动平衡',roundrobin:'轮流平均',fixed:'固定一个'}[v]||v));
+      toast('已切换：'+({balance:'自动平衡',roundrobin:'轮流平均',fixed:'固定一个',tier:'按等级'}[v]||v));
     }catch(err){ toast('没改成功：'+err.message); }
   });
   const sel=$('#stratFixed');
@@ -2106,6 +2253,8 @@ $('#sGuide').onclick=()=>go('start');
 
 // ── 在线更新：启动时后台查一次；有新版就在「设置」上亮个点
 function paintUpdate(u){
+  // 倒计时自己每秒走字，别等 overview 轮询（空闲时 20 秒才一次）。
+  if(window._autoCdTimer){ clearInterval(window._autoCdTimer); window._autoCdTimer=null; }
   const c=u.check, dl=u.dl, el=$('#sUpd'), pf=u.prefetch||{};
   const canIns=u.can_install!==false;      // Mac 没有安装器，按钮得换文案
   $('#tabSetN').textContent=(c&&c.newer)?'●':'';
@@ -2113,6 +2262,31 @@ function paintUpdate(u){
     el.hidden=false; el.className='upd new';
     el.innerHTML='<b>有新版本'+((c&&c.latest)?(' v'+esc(c.latest)):'')+'</b><br>'
       +'现在还有图在跑，等这一轮跑完会自动装——不会打断正在出的图。';
+    return;
+  }
+  // A：后台下好后自动找空档升级，留 10 秒可见倒计时，能取消也能立刻装
+  if(u.auto_hint==='countdown' && u.auto_at){
+    const left=Math.max(0,Math.ceil((u.auto_at*1000-Date.now())/1000));
+    el.hidden=false; el.className='upd new';
+    el.innerHTML='<b>新版本 v'+esc((c&&c.latest)||'')+' 已下载好，'+left+' 秒后自动升级</b>'
+      +'<br><span class="muted" style="font-size:12.5px">不会打断出图；装完半瓢会自己重新打开</span>'
+      +'<div style="margin-top:6px">'
+      +'<button class="btn zhu sm" id="sUpdGo">现在就装</button>'
+      +'<button class="btn sm" id="sUpdAutoCancel" style="margin-left:6px">这次先不装</button>'
+      +'</div>';
+    const g=$('#sUpdGo');
+    if(g) g.onclick=()=>act({do:'update_install'},g,'开始下载…','开始下载新版本');
+    const x=$('#sUpdAutoCancel');
+    if(x) x.onclick=async()=>{
+      try{ await post({do:'update_cancel_auto'}); toast('好，这次不自动升级了'); loadOverview(); }
+      catch(e){ toast(e.message); }
+    };
+    const head=el.querySelector('b');
+    window._autoCdTimer=setInterval(()=>{
+      const s=Math.max(0,Math.ceil((u.auto_at*1000-Date.now())/1000));
+      if(head) head.textContent='新版本 v'+((c&&c.latest)||'')+' 已下载好，'+s+' 秒后自动升级';
+      if(s<=0){ clearInterval(window._autoCdTimer); window._autoCdTimer=null; }
+    },500);
     return;
   }
   if(dl && dl.phase==='downloading'){
@@ -2401,8 +2575,12 @@ setInterval(()=>{
     if(live || _tick % 10 === 0) openJob(S.cur, true);
   }
   const waiting=(S.accounts||[]).some(a=>(a.login_phase||{}).phase==='waiting')||S.pendingNew;
-  if(!waiting && !S.running && _tick % 10 !== 0) return;
-  if(!waiting && S.running && _tick % 3 !== 0) return;
+  // 自动升级倒计时只有 10 秒，空闲时 20 秒才拉一次会整个错过——倒计时期间每轮都拉。
+  const autoCd=!!(S.update && S.update.auto_hint==='countdown');
+  if(!autoCd){
+    if(!waiting && !S.running && _tick % 10 !== 0) return;
+    if(!waiting && S.running && _tick % 3 !== 0) return;
+  }
   loadOverview();
   if(S.tab==='jobs') loadJobs();
   // 统计块也要跟着刷新，否则任务刚完成时"今天"还是 0，跟列表打架

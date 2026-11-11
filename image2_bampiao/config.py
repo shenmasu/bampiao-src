@@ -143,8 +143,9 @@ def parse(raw: dict, path: Path) -> Config:
     idle = _int_in(raw.get("idle_recycle_min", 10), 1, 1440, "idle_recycle_min")
 
     strategy = str(raw.get("account_strategy", "balance") or "balance").strip().lower()
-    if strategy not in ("balance", "roundrobin", "fixed"):
-        raise ConfigError("account_strategy 只能是 balance / roundrobin / fixed，收到 %r。" % strategy)
+    if strategy not in ("balance", "roundrobin", "fixed", "tier"):
+        raise ConfigError(
+            "account_strategy 只能是 balance / roundrobin / fixed / tier，收到 %r。" % strategy)
     fixed_id = str(raw.get("account_fixed_id", "") or "").strip()
 
     ui = raw.get("ui") or {}
@@ -208,8 +209,12 @@ def parse(raw: dict, path: Path) -> Config:
     # 默认并发 = 账号数：有几个号就开几个 worker。
     # 以前写死 2 —— 三个号时第三个号永远闲着，用户看到的是"只用一个号在跑"
     # （2026-11-03 被问到）。显式写在配置里的 concurrency 仍然优先。
-    default_conc = min(8, max(1, len(accounts)))
-    concurrency = _int_in(raw.get("concurrency", default_conc), 1, 8, "concurrency")
+    # 2026-11-11：上限曾写死 8，13 个号时后 5 个永远闲着；改成跟着账号数涨。
+    # 但不能硬等于账号数：init 生成的默认配置是「0 个账号 + concurrency = 2」，
+    # 硬等于会让 C.load(DEFAULT_TOML) 直接报错。所以下限保留 8。
+    cap = max(8, len(accounts))
+    default_conc = max(1, len(accounts))   # 有几个号就开几个 worker
+    concurrency = _int_in(raw.get("concurrency", default_conc), 1, cap, "concurrency")
 
     return Config(path=path, data_dir=data_dir, concurrency=concurrency,
                   idle_recycle_min=idle, account_strategy=strategy,
@@ -226,7 +231,9 @@ schema_version = 1
 data_dir = "."
 concurrency = 2
 idle_recycle_min = 10
-# 多账号时用哪个：balance（用得少的优先）/ roundrobin（轮流）/ fixed（固定最近用过的）
+# 多账号时用哪个：
+# balance（用得少的优先）/ roundrobin（轮流）/ fixed（固定最近用过的）
+# tier（按订阅档位：Pro > Plus > unknown > free；连续失败的号一律先靠边）
 account_strategy = "balance"
 # 选了 fixed 才会用到：固定用哪个账号（写 id，不是名字；改名不影响）
 account_fixed_id = ""
@@ -399,13 +406,17 @@ def _profile_mtime(acc) -> float:
         return 0.0
 
 
-def choose_by_strategy(cfg, candidates, today_of=None, pending_of=None):
+def choose_by_strategy(cfg, candidates, today_of=None, pending_of=None,
+                       plan_of=None, fail_of=None):
     """在候选账号里按 account_strategy 挑一个。
 
     调用方负责先把"现在不能用"的（冷却中 / 掉登录）过滤掉——策略只管"在能用的里面挑谁"。
 
     today_of(acc) -> 该账号今天出图数；不给就退回按 profile 时间挑。
     pending_of(acc) -> 该账号还有几单没跑完（队列 + 在跑）。
+    plan_of(acc) -> 订阅档位（free / Plus / Pro / 其它），给 tier 策略用。
+    fail_of(acc) -> 连续失败次数，给"坏号先靠边"用。
+    后两个都是可选回调，**不传时行为与旧版完全一致**（老调用方 / 既有单测不受影响）。
     **排队数必须排在第一优先**：连续投四单、每单都只看"今天出了几张"的话，
     四单会全挑中同一个号（今天都还没结算），面板上看起来像"只用一个号"；
     实际调度时才换号，用户看到的是"根本不并行"（2026-11-05 实机复现）。
@@ -427,32 +438,76 @@ def choose_by_strategy(cfg, candidates, today_of=None, pending_of=None):
         #   绝不能因此不让出图，往下走按用得少的挑。
     if strat == "roundrobin":
         return min(candidates, key=_profile_mtime)
-    if today_of is not None or pending_of is not None:
-        try:
-            def _score(a):
-                load = int(pending_of(a) or 0) if pending_of is not None else 0
-                today = int(today_of(a) or 0) if today_of is not None else 0
-                return (load, today, a.id)
 
-            return min(candidates, key=_score)
+    def _streak(a):
+        try:
+            return int(fail_of(a) or 0) if fail_of is not None else 0
+        except Exception:
+            return 0
+
+    def _tier(a):
+        """档位排序：Pro > Plus > unknown/其它 > free。
+
+        unknown（没探到）排在中间：不能把"不知道"当成免费号压到最后。
+        用宽松包含匹配，planType 具体字符串可能带前缀/大小写。
+        """
+        try:
+            raw = plan_of(a) if plan_of is not None else ""
+        except Exception:
+            raw = ""
+        p = str(raw or "").lower()
+        if "pro" in p:
+            return 0
+        if "plus" in p:
+            return 1
+        if "free" in p:
+            return 3
+        return 2
+
+    def _base(a):
+        load = int(pending_of(a) or 0) if pending_of is not None else 0
+        today = int(today_of(a) or 0) if today_of is not None else 0
+        return (load, today, a.id)
+
+    if strat == "tier":
+        try:
+            # 连续失败排在档位之前：再高级的号一直坏，也该先让给别人
+            return min(candidates, key=lambda a: (_streak(a), _tier(a)) + _base(a))
+        except Exception:
+            pass
+        return max(candidates, key=_profile_mtime)
+
+    if today_of is not None or pending_of is not None or fail_of is not None:
+        try:
+            # 连续失败降权对所有策略生效：坏号先靠边，别的号轮着上
+            return min(candidates, key=lambda a: (_streak(a),) + _base(a))
         except Exception:
             pass
     return max(candidates, key=_profile_mtime)
 
 
-def set_scalar(path: Path, key: str, value: str) -> None:
+def set_scalar(path: Path, key: str, value, *, as_int: bool = False) -> None:
     """改配置里的**一个顶层标量**（只动那一行，别的一字不改）。
 
     写之前先在临时文件上 load 一遍：改坏了就不落盘。
     面板改策略走这里，不用它整份重写配置。
+    as_int=True 用于 concurrency 这类整数项：写成裸数字、别加引号，
+    否则 load() 的 _int_in 会把 "3" 当字符串直接拒掉。
     """
     if not re.fullmatch(r"[a-z_][a-z0-9_]*", key or ""):
         raise ConfigError("配置项名字不合法：%r" % key)
 
+    if as_int:
+        try:
+            line = "%s = %d" % (key, int(value))
+        except (TypeError, ValueError) as e:
+            raise ConfigError("%s 必须是整数，收到 %r。" % (key, value)) from e
+    else:
+        line = '%s = "%s"' % (key, str(value).replace('"', ""))
+
     with locks.exclusive(path.with_suffix(".lock"), timeout=15,
                          what="配置文件（另一个半瓢正在改它）"):
         text = path.read_text(encoding="utf-8")
-        line = '%s = "%s"' % (key, str(value).replace('"', ""))
         # 先把已有的同名行**全部摘掉**：老版本把它插进过 [notify] 表里，
         # 那种位置改了也不生效（等于 notify.account_strategy）。摘干净再重插。
         body = "".join(

@@ -251,7 +251,18 @@ class AccountState:
     login_checked_at: float | None = None
     login_user: str = ""             # 会话里拿到的短 id，用于发现"换了号"
     login_email: str = ""            # 最近一次探到的登录邮箱，账号卡直接显示（不靠登录 phase 文件兜底）
+    # 订阅档位：free / Plus / Pro。空字符串 = 还没探到（面板显示 unknown，绝不猜）。
+    # source 记数据来源（session.planType / 页面文本 / accounts check）；
+    # checked_at 让「曾是 Plus 现在变 free」有机会提示「疑似已过期」。
+    plan: str = ""
+    plan_source: str = ""
+    plan_checked_at: float | None = None
     cooldown_until: float | None = None
+    # 连续失败次数（成功即清零）。分配时降权，避免外部 Agent 重投时反复撞同一个坏号：
+    # 失败不出图 → stat_today 不涨 → 老逻辑永远觉得它「用得最少」→ 一直选它
+    #（2026-11-11 用户反馈：撞风控/验证的号被反复投，需要人手动点）。
+    fail_streak: int = 0
+    last_fail_at: float | None = None
     # 撞上限的记录：每次 {at, after_n, reset_at}。样本够了就能估"今天还能出几张"
     quota_hits: list[dict] = field(default_factory=list)
     last_used_at: float | None = None
@@ -278,6 +289,27 @@ class AccountState:
         """
         return self.stat_today if self.stat_date == day else 0
 
+    def today_count(self) -> int:
+        """选号排序用：按本地日期自动归零，别拿跨日不归零的裸 stat_today 比大小。"""
+        return self.images_today(time.strftime("%Y-%m-%d", time.localtime()))
+
+    def fail_streak_now(self, now: float | None = None) -> int:
+        """连续失败次数（带 2 小时衰减）。
+
+        人工把验证点掉 / 号修好之后，如果计数一直不消，它会永远排最后、
+        也就永远等不到一次成功来清零。超过衰减窗口就当作没失败过。
+        """
+        n = int(self.fail_streak or 0)
+        if not n:
+            return 0
+        at = self.last_fail_at
+        try:
+            if at and (float(now if now is not None else time.time()) - float(at)) > 7200:
+                return 0
+        except (TypeError, ValueError):
+            pass
+        return n
+
     def quota_hits_on(self, day: str) -> int:
         """某一天撞了几次上限。quota_hits 里存的是时间戳，按本地日期数。"""
         import time as _t
@@ -302,7 +334,12 @@ class AccountState:
             login_checked_at=d.get("login_checked_at"),
             login_user=str(d.get("login_user") or ""),
             login_email=str(d.get("login_email") or ""),
+            plan=str(d.get("plan") or ""),
+            plan_source=str(d.get("plan_source") or ""),
+            plan_checked_at=d.get("plan_checked_at"),
             cooldown_until=d.get("cooldown_until"),
+            fail_streak=int(d.get("fail_streak") or 0),
+            last_fail_at=d.get("last_fail_at"),
             quota_hits=[x for x in (d.get("quota_hits") or []) if isinstance(x, dict)],
             last_used_at=d.get("last_used_at"),
             stat_date=str(d.get("stat_date") or ""),

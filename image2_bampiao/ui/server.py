@@ -135,13 +135,19 @@ class Panel:
                 # 邮箱：新登录写进 AccountState；老账号从登录 phase 兜底，
                 # 后台补扫线程会陆续把老账号的邮箱补上（见 _scan_emails）。
                 "email": st.login_email or str(phase.get("email") or ""),
+                # 订阅档位：probe / 登录 / 补扫写进 AccountState；空 = 还没探到，
+                # 面板显示 unknown，绝不猜（已过期的 Plus 也可能只显示 free）。
+                "plan": st.plan or "",
+                "plan_source": st.plan_source or "",
+                "plan_checked_at": st.plan_checked_at,
                 "browser_running": self._browser_running(acc.id),
                 "login_phase": phase,
             })
         # 在跑的单要单独给：前端原来从"当前页 + 当前筛选"里取，
         # 翻到第二页或筛成"完成"时，顶栏写着在跑 1 而卡片区是空的。
         try:
-            runs = self.store.query(limit=5, status="running").get("rows") or []
+            # 并发上限放开到账号数后，5 张卡会把后面几单全藏起来（2026-11-11）。
+            runs = self.store.query(limit=32, status="running").get("rows") or []
             # "显示在跑"和"真的在跑"是两件事：job.json 写着 running 只说明它被领走了。
             # 用账号的出图锁判断此刻有没有进程在画——锁拿着=真在跑；锁空着=残留，
             # 由后台 reaper 在 90 秒内标成"不确定"（2026-11-03 朋友看到"完成了还在跑"）。
@@ -168,6 +174,9 @@ class Panel:
                 # 设置页要显示"现在选的是哪种策略"，得一起给出当前值
                 "account_strategy": getattr(self._cfg(), "account_strategy", "balance"),
                 "account_fixed_id": getattr(self._cfg(), "account_fixed_id", ""),
+                # 设置页要显示/改当前并行数，以及上限（上限 = 账号数）
+                "concurrency": self._cfg().concurrency,
+                "account_count": len(self._cfg().accounts),
                 "facets": self.store.facets()}
 
     def jobs(self, q: dict) -> dict:
@@ -458,20 +467,86 @@ class Panel:
         if do == "autostart_set":
             return self._autostart_set(bool(body.get("on")))
 
+        if do == "watchdog_get":
+            return self._watchdog_get()
+
+        if do == "watchdog_set":
+            return self._watchdog_set(bool(body.get("on")))
+
+        if do == "auto_update_get":
+            return {"ok": True, "enabled": self._auto_update_enabled()}
+
+        if do == "auto_update_set":
+            try:
+                self._set_auto_update_enabled(bool(body.get("on")))
+            except Exception as e:      # noqa: BLE001
+                return {"ok": False, "why": str(e)}
+            return {"ok": True, "enabled": self._auto_update_enabled()}
+
+        if do == "update_cancel_auto":
+            self._UPD["auto_cancelled"] = True
+            self._UPD["auto_hint"] = ""
+            self._UPD["auto_at"] = 0
+            return {"ok": True}
+
         if do == "config_set":
             from .. import config as cfg_mod
             key = str(body.get("key") or "")
             # 白名单：只让面板改这几个，别把这里变成"任意改配置文件"的口子
-            if key not in ("account_strategy", "account_fixed_id"):
+            if key not in ("account_strategy", "account_fixed_id", "concurrency"):
                 return {"ok": False, "why": "不认识的配置项：%s" % key}
-            val = str(body.get("value") if body.get("value") is not None else "")
-            if key == "account_strategy" and val not in ("balance", "roundrobin", "fixed"):
+            val = body.get("value")
+            if key == "account_strategy" and str(val) not in (
+                    "balance", "roundrobin", "fixed", "tier"):
                 return {"ok": False, "why": "取值不对"}
             try:
-                cfg_mod.set_scalar(self._cfg().path, key, val)
+                if key == "concurrency":
+                    # 整数项：上限 = 账号数（config.parse 里同一口径）。
+                    # 写成裸数字，不能套 set_scalar 的字符串写法。
+                    cfg = self._cfg()
+                    cap = max(8, len(cfg.accounts))
+                    n = int(val)
+                    if not (1 <= n <= cap):
+                        return {"ok": False, "why": "并行数要在 1–%d 之间" % cap}
+                    cfg_mod.set_scalar(cfg.path, key, n, as_int=True)
+                    val = n
+                else:
+                    val = "" if val is None else str(val)
+                    cfg_mod.set_scalar(self._cfg().path, key, val)
+            except (TypeError, ValueError):
+                return {"ok": False, "why": "并行数必须是整数"}
             except Exception as e:
                 return {"ok": False, "why": str(e)}
             return {"ok": True, "key": key, "value": val}
+
+        if do == "backfill_email":
+            # 用户主动点「补邮箱」：只允许为这一个号临时拉起浏览器。
+            # 后台补扫线程仍坚持「绝不启动浏览器」——账号页刷新不能拉起 13 个号。
+            aid = str(body.get("account") or "")
+            cfg = self._cfg()
+            acc = next((a for a in cfg.accounts if a.id == aid), None)
+            if not acc:
+                return {"ok": False, "why": "没有这个账号：%s" % aid}
+            try:
+                from ..driver import session as sess
+                r = sess.probe(cfg, acc)
+            except Exception as e:
+                return {"ok": False, "why": "连不上浏览器：%s" % e}
+            p = ((r or {}).get("probe") or {})
+            email = str(p.get("email") or "").strip()
+            if not email:
+                return {"ok": False, "why": "没读到登录邮箱（页面可能还没到 chatgpt.com）"}
+            st = self.store.account(aid)
+            st.login_email = email
+            st.login = "ok"
+            st.login_checked_at = time.time()
+            plan = str(p.get("plan") or "").strip()
+            if plan:
+                st.plan = plan
+                st.plan_source = "session"
+                st.plan_checked_at = time.time()
+            self.store.save_account(st)
+            return {"ok": True, "account": aid, "email": email}
 
         if do == "global_install":
             from ..cli import cli_selfcheck, install_global, install_global_auto
@@ -950,6 +1025,10 @@ class Panel:
         return {"check": self._UPD["check"], "dl": self._UPD["dl"],
                 "prefetch": self._UPD.get("prefetch"),
                 "waiting": bool(self._UPD.get("waiting")),
+                # A：自动升级倒计时与开关状态，给设置页显示/取消用
+                "auto_enabled": self._auto_update_enabled(),
+                "auto_hint": self._UPD.get("auto_hint", ""),
+                "auto_at": self._UPD.get("auto_at", 0),
                 # Mac 版没有安装器，按钮文案得跟着变，否则写着"下载并安装"却什么都没发生
                 "can_install": _u.platform_key() == "win"}
 
@@ -1022,12 +1101,84 @@ class Panel:
                 p = update.download(c, self.cfg.state_dir / "update", progress=prog)
                 pf["path"] = str(p)
                 pf["state"] = "ready"
+                # A：下好后自动找空档应用，用户不用再点一下（有倒计时可取消、设置里可关）
+                self._maybe_auto_apply(c)
             except Exception as e:      # noqa: BLE001
                 # 静默失败：用户没点什么东西，不该弹窗烦他；点更新时会重下
                 pf["state"] = "failed"
                 pf["why"] = str(e)[:120]
 
         threading.Thread(target=run, daemon=True, name="update-prefetch").start()
+
+    # ------------------------------------------------------------ 自动更新（A）
+    def _auto_update_path(self):
+        return self.cfg.state_dir / "auto_update.json"
+
+    def _auto_update_enabled(self) -> bool:
+        """默认开：用户要的是「点都不用点」。设置页能整个关掉。"""
+        try:
+            import json
+
+            return bool(json.loads(
+                self._auto_update_path().read_text(encoding="utf-8")).get("on", True))
+        except Exception:
+            return True
+
+    def _set_auto_update_enabled(self, on: bool) -> None:
+        import json
+
+        p = self._auto_update_path()
+        p.parent.mkdir(parents=True, exist_ok=True)
+        p.write_text(json.dumps({"on": bool(on)}), encoding="utf-8")
+        if not on:
+            self._UPD["auto_hint"] = ""
+            self._UPD["auto_cancelled"] = True
+
+    def _maybe_auto_apply(self, c: dict) -> None:
+        """后台下好后，等一个真正的空闲窗口再自动装，留 10 秒可见倒计时可取消。
+
+        不偷偷重启：倒计时会在设置页显示「N 秒后自动升级」和两个按钮，
+        用户能点「现在就装」也能点「这次先不装」。有图在跑一律不装。
+        """
+        if not self._auto_update_enabled() or self._UPD.get("auto_cancelled"):
+            return
+        if self._UPD.get("auto_applying"):
+            return
+        self._UPD["auto_applying"] = True
+
+        def watch():
+            from .. import update
+
+            idle_since = None
+            deadline = time.time() + 30 * 60          # 最多等 30 分钟空闲窗口
+            try:
+                while time.time() < deadline:
+                    if (self._UPD.get("auto_cancelled")
+                            or not self._auto_update_enabled()):
+                        return
+                    if (self._UPD["dl"] or {}).get("phase") in ("downloading", "installing"):
+                        return                       # 用户手动点了，别抢
+                    busy = update.busy_reason(self.cfg, getattr(self, "store", None))
+                    if busy:
+                        idle_since = None
+                        self._UPD["auto_hint"] = ""
+                        self._UPD["auto_at"] = 0
+                    else:
+                        now = time.time()
+                        if idle_since is None:
+                            idle_since = now
+                            self._UPD["auto_at"] = now + 10
+                        self._UPD["auto_hint"] = "countdown"
+                        if now - idle_since >= 10:
+                            self._UPD["auto_hint"] = ""
+                            self._UPD["auto_cancelled"] = True   # 本次会话只自动应用一次
+                            self._start_download(c)
+                            return
+                    time.sleep(1)
+            finally:
+                self._UPD["auto_applying"] = False
+
+        threading.Thread(target=watch, daemon=True, name="update-auto-apply").start()
 
     def _install_from(self, path, st: dict) -> None:
         """启动安装程序并让出进程。现下的包和后台下好的包走同一条路。"""
@@ -1113,6 +1264,33 @@ class Panel:
         except Exception as e:      # noqa: BLE001
             return {"ok": False, "enabled": not on, "why": str(e)}
         return self._autostart_get()
+
+    def _watchdog_get(self) -> dict:
+        """「崩溃后自动拉起」开关状态。2026-11-11 起默认关。
+
+        以前安装完就自动注册一个每 5 分钟的看护任务：用户关掉进程、五分钟后
+        又自己冒出来；测试/多实例时还会把任务指到 dist-win 的 exe 上。
+        现在改成设置页里的显式开关，不开就什么任务都没有。
+        """
+        from .. import desktop
+
+        try:
+            return {"ok": True, "enabled": desktop.watchdog_enabled(),
+                    "task_exists": desktop.watchdog_task_exists()}
+        except Exception as e:      # noqa: BLE001
+            return {"ok": False, "enabled": False, "task_exists": False,
+                    "why": str(e)}
+
+    def _watchdog_set(self, on: bool) -> dict:
+        from .. import desktop
+
+        try:
+            ok, why = desktop.set_watchdog_enabled(on)
+        except Exception as e:      # noqa: BLE001
+            return {"ok": False, "enabled": not on, "why": str(e)}
+        if not ok:
+            return {"ok": False, "enabled": not on, "why": why}
+        return self._watchdog_get()
 
     def _update_install(self) -> dict:
         """下载 → 校验 → 静默安装 → 退出本程序（安装程序装完会重新打开半瓢）。"""
@@ -1238,32 +1416,46 @@ class Panel:
             time.sleep(60.0)
 
     def _scan_emails(self) -> None:
-        """给没有邮箱的账号读一次 /api/auth/session。
+        """给缺邮箱/缺档位的账号读一次 /api/auth/session。
 
         新号登录时本来就写 email；老账号（升级前加的、批量导入的）没有。
         这里只连已经开着的 CDP，**绝不启动浏览器**，也不碰正在出图的号。
-        每 2 分钟扫一次缺邮箱的号，全部补齐后就不再有额外动作。
+        每 2 分钟扫一次；邮箱补好后仍会定期刷新档位（订阅会变、会过期），
+        否则 plan 标签写一次就永远不更新（2026-11-11）。
         """
         time.sleep(3.0)
         while True:
             try:
                 cfg = self._cfg()
+                now = time.time()
                 for acc in list(cfg.accounts):
                     st = self.store.account(acc.id)
-                    if st.login_email:
+                    need_email = not st.login_email
+                    # 档位每小时最多刷一次；从没探到过就每次都试
+                    need_plan = (not st.plan or
+                                 now - (st.plan_checked_at or 0) > 3600)
+                    if not (need_email or need_plan):
                         continue
                     if not self._browser_running(acc.id):
                         continue
                     if run_alive(cfg, acc.id) is True:
                         continue            # 正在出图，别去碰同一个页面
-                    info = login_flow.read_state(acc.port)
-                    email = str((info or {}).get("email") or "").strip()
-                    if not email:
-                        continue
-                    st.login_email = email
-                    st.login = "ok"
-                    st.login_checked_at = time.time()
-                    self.store.save_account(st)
+                    info = login_flow.read_state(acc.port) or {}
+                    changed = False
+                    email = str(info.get("email") or "").strip()
+                    if email and email != st.login_email:
+                        st.login_email = email
+                        st.login = "ok"
+                        st.login_checked_at = now
+                        changed = True
+                    plan = str(info.get("plan") or "").strip()
+                    if plan:
+                        st.plan = plan
+                        st.plan_source = "session"
+                        st.plan_checked_at = now
+                        changed = True
+                    if changed:
+                        self.store.save_account(st)
             except Exception:
                 pass
             time.sleep(120.0)
@@ -1408,17 +1600,23 @@ class Panel:
             # 先滤掉"现在不能用的"，再按用户选的策略挑（以前这里硬编码"今天最少的"，
             # 用户改了策略面板却不认，两边行为对不上）
             from ..config import choose_by_strategy
+            from ..driver import session_health as sh
             usable = []
             for a in self._cfg().accounts:
                 st = self.store.account(a.id)
                 if st.login == "required" or st.cooling():
                     continue
+                # 和 Coordinator.usable_accounts 同一口径：被验证挂起的号也别派
+                if sh.read_pause(str(self._cfg().data_dir), a.id):
+                    continue
                 usable.append(a)
             load = self.store.active_load()
             picked = choose_by_strategy(
                 self._cfg(), usable,
-                lambda a: self.store.account(a.id).stat_today,
-                lambda a: load.get(a.id, 0))
+                lambda a: self.store.account(a.id).today_count(),
+                lambda a: load.get(a.id, 0),
+                lambda a: self.store.account(a.id).plan,
+                lambda a: self.store.account(a.id).fail_streak_now())
             acc_id = picked.id if picked else ""
             if not acc_id:
                 return {"ok": False,
@@ -1476,6 +1674,34 @@ class Panel:
             if not acc0:
                 return {"ok": False, "why": "没有这个账号：%s" % account_id}
             target = acc0.id
+        else:
+            # 2026-11-11：原账号连续失败时，重投别再钉死在它身上。
+            # 用户反馈「Agent 重新投了几次，一直在同一个账号里投，导致那个号被风控，
+            # 需要人手动点」。只在原号确实有失败记录时改选；没故障时保留原号语义。
+            try:
+                st0 = self.store.account(target)
+                if st0 and int(getattr(st0, "fail_streak", 0) or 0) > 0:
+                    from ..config import choose_by_strategy
+                    cfg = self._cfg()
+                    usable = []
+                    for a in cfg.accounts:
+                        s = self.store.account(a.id)
+                        if s.login == "required" or s.cooling():
+                            continue
+                        usable.append(a)
+                    if len(usable) > 1:
+                        load = self.store.active_load()
+                        picked = choose_by_strategy(
+                            cfg, usable,
+                            lambda a: self.store.account(a.id).today_count(),
+                            lambda a: load.get(a.id, 0),
+                            lambda a: self.store.account(a.id).plan,
+                            lambda a: self.store.account(a.id).fail_streak_now())
+                        # fail_streak 降权会自动避开原号；选回原号也无害（说明别的号更糟）
+                        if picked:
+                            target = picked.id
+            except Exception:
+                pass
 
         st = self.store.account(target)
         if st is not None and st.login == "required":

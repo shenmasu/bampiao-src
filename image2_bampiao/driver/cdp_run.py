@@ -90,10 +90,13 @@ _PROBE_JS = """async () => {
     if (r.ok) { const j = await r.json(); user = (j && j.user) || null; expires = (j && j.expires) || null; }
   } catch (e) {}
   const composer = !!document.querySelector('div.ProseMirror[contenteditable="true"]');
+  // planType 是 /api/auth/session 里已有的字段（backup.py 的 _JS_SESSION 早就在读）。
+  // 拿不到就返回 null，上层一律显示 unknown，绝不猜档位。
   return {url: location.href, title: document.title, composer,
           logged_in: !!user,
           user_id: user ? String(user.id).slice(0, 12) : null,
           email: user ? (user.email || null) : null,
+          plan: (user && user.planType) || null,
           expires: expires};
 }"""
 STATE = os.path.join(_DATA, "state", "driver_state.json")
@@ -1506,13 +1509,22 @@ async def main():
                               extra={"paste_failed": 1, "reason": "opening", "scene": scene})
                 return
             t0 = time.time()
-            while time.time() - t0 < 60:
+            # 2026-11-11：ChatGPT 现在会先给一个 local-chatgpt 临时会话 URL，消息异步
+            # 发到服务器、URL 晚几秒（甚至更久）才转成正式 /c/<uuid>。旧逻辑沿用
+            # 11-02 的结论「local-chatgpt = 消息根本没发到服务器」，一看到就立刻判失败；
+            # 但 11-10 多单现场显示「生成中=True」/ 图已正常出，属于误报失败，
+            # 还会触发自动重投、白烧一份额度（R413→416、R415→417）。
+            # 现在：给足时间等 URL 转正；草稿期间绝不因「出现 complete 回合」提前收手
+            #（那可能是上一单残留或开场白的回复，不代表会话已转正）。
+            while time.time() - t0 < 90:
                 await pg.wait_for_timeout(2000)
                 cur = pg.url or ""
                 # 会话一建出来、页面空了就继续，不必等模型把开场白答完。
                 # 2026-11-03 实测：等完整回合要 121 秒，用户以为卡死了。
                 if "/c/" in cur and "local-chatgpt" not in cur and not await _page_busy(pg):
                     break
+                if "local-chatgpt" in cur:
+                    continue
                 try:
                     ts = await pg.evaluate("""()=>[...document.querySelectorAll('[data-talvt-turn-state]')].map(t=>({
                         s:t.getAttribute('data-talvt-turn-state'),
@@ -1525,23 +1537,39 @@ async def main():
             log("开场确认 %s（等了 %.0f 秒）" % (pg.url, time.time() - t0))
             _OPENED["v"] = True
             if "local-chatgpt" in (pg.url or ""):
-                # 2026-11-02 实测：页面在"项目加载失败"时会建出一个本地草稿会话
-                # （URL 形如 /c/local-chatgpt%3A<uuid>），消息**根本没发到服务器**，
-                # 之后只会看到一个空回合。以前要白等 9 分钟才判空回复。
-                _LOCAL_CHAT["url"] = pg.url
-                # 让下一次 ensure() 重启这个号的浏览器：实测只有重启能救回草稿态
+                # 等了 90 秒仍是草稿：判死前最后看一眼现场。
+                # 消息真没发出去时，页面应是空的新会话（不忙、无图）；
+                # 反之页面正在生成 / 已有图，说明消息其实进了服务器，绝不能判失败。
+                busy = await _page_busy(pg)
+                has_img = False
                 try:
-                    session_health.mark_broken(
-                        _DATA, getattr(args, "state_key", ""), "local_draft")
+                    has_img = bool(await pg.evaluate(
+                        "() => !!document.querySelector('main img')"))
                 except Exception:
                     pass
-                log("!! 会话是本地草稿（local-chatgpt）：消息没真正发出去，本轮会很快失败")
-                # 立刻收手：这种会话里发什么都不算数，再等 2 分钟只是让用户干等。
-                # 上层看到 note 里的"本地草稿"会自动换一个号重试（2026-11-04）。
-                scene = await _paste_mod.describe(pg)
-                _write_result(args.out, ok=0, fail=1,
-                              extra={"paste_failed": 1, "reason": "local_draft", "scene": scene})
-                return
+                if busy or has_img:
+                    log("!! URL 仍是 local-chatgpt，但页面正在生成/已有图：消息其实发出去了，不判失败，继续取图")
+                    # 再给草稿会话一点时间升级成正式会话（乐观 UI 会转正），
+                    # 这样后面的会话 id / 重命名才落到真的会话上。
+                    t1 = time.time()
+                    while time.time() - t1 < 20 and "local-chatgpt" in (pg.url or ""):
+                        await pg.wait_for_timeout(2000)
+                    log("   继续时 URL：%s" % pg.url)
+                    # 不设 _LOCAL_CHAT、不写失败 result：主循环靠 blob_srcs(pg) 取图，
+                    # 不依赖会话 id，URL 没转正也能把图拿回来。
+                else:
+                    # 确实既没等到正式会话、页面又没有任何生成迹象，才按草稿失败收手。
+                    _LOCAL_CHAT["url"] = pg.url
+                    try:
+                        session_health.mark_broken(
+                            _DATA, getattr(args, "state_key", ""), "local_draft")
+                    except Exception:
+                        pass
+                    log("!! 会话是本地草稿（local-chatgpt）：消息没真正发出去，本轮会很快失败")
+                    scene = await _paste_mod.describe(pg)
+                    _write_result(args.out, ok=0, fail=1,
+                                  extra={"paste_failed": 1, "reason": "local_draft", "scene": scene})
+                    return
             _cid = (pg.url or "").rstrip("/").split("/")[-1]
             record_conversation(_cid, getattr(args, "state_key", ""))
             _t = _title_from_opening(open_txt)
