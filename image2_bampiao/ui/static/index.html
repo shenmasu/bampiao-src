@@ -838,6 +838,7 @@ const CODE={QUOTA_COOLDOWN:'额度用完了',AUTH_REQUIRED:'登录掉了',
   NO_LANE:'没有能用的号',RENDER_FAILED:'没画出来',
   TIMEOUT_UNCERTAIN:'结果不确定',BUSY:'账号正忙',CANCELLED:'已取消',
   NO_REF_FILE:'参考图找不到',BROWSER_LOST:'浏览器中途关了',
+  SURVEY_BLOCKED:'偏好问卷',
   ASK_EMPTY:'没读到回复',ASK_TIMEOUT:'等回复超时',ASK_SEND:'没发出去',ASK_FAILED:'没拿到回复',
   GENERATE_FAILED:'出图失败',PASTE_FAILED:'没发出去',UNKNOWN:'没记下原因'};
 const cname=c=>CODE[c]||c||'';
@@ -848,7 +849,8 @@ const NEXT={AUTH_REQUIRED:'去「账号」页点「重新登录」，登好再�
   NO_LANE:'账号页加一个号，或等冷却结束。',
   BUSY:'等它自己跑完，同一个号不能并行。',
   NO_REF_FILE:'派单时给的参考图路径不存在（文件还没生成好/路径写错），改好文件再投；改提示词没用。',
-  BROWSER_LOST:'出图时浏览器被关掉了，重投一次就好；反复出现点左下角「反馈」。'};
+  BROWSER_LOST:'出图时浏览器被关掉了，重投一次就好；反复出现点左下角「反馈」。',
+  SURVEY_BLOCKED:'ChatGPT 弹了「你更喜欢哪一张图像？」问卷，这张确定没出图：去浏览器点掉问卷，回来只重投这一张；本批其它图会照常继续。'};
 const nextStep=c=>NEXT[c]||'';
 const ITLAB={ok:'完成',failed:'失败',running:'出图中',queued:'排队',skipped:'跳过',cancelled:'已停下'};
 const COLORS=['var(--c1)','var(--c2)','var(--c3)','var(--c4)'];

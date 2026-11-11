@@ -66,6 +66,7 @@ _KIND_TEXT = {
     "browser-lost": "等图的时候浏览器被关掉了",
     "busy": "这个号正忙着跑别的单",
     "no-ref": "参考图文件不存在",
+    "survey": "ChatGPT 弹了「你更喜欢哪一张图像？」的偏好问卷，这一张没出图：关掉问卷后重投这一张就行",
 }
 
 
@@ -107,7 +108,7 @@ def explain(tail: str = "", kind: str = "") -> str:
 from dataclasses import dataclass, field  # noqa: E402
 
 CLS_WHITELIST = ("quota", "auth", "verify", "network", "page", "file", "unsure",
-                 "policy", "empty", "other")
+                 "policy", "empty", "survey", "other")
 
 
 @dataclass(frozen=True)
@@ -186,6 +187,14 @@ _INFO: dict[str, FailureInfo] = {
         ("retry", "再投一次"), ("feedback", "反馈给作者"),
         steps=("点「再投一次」",
                "还是不行就点「反馈给作者」，日志会一起带上")),
+    "survey": FailureInfo(
+        "survey", "网页弹了偏好问卷", "偏好问卷",
+        "ChatGPT 弹出「你更喜欢哪一张图像？」的二选一问卷，两个候选是空白占位、这一张确定没出图。"
+        "这是网页的随机实验，不是提示词或额度问题；关掉问卷后重投这一张就好，"
+        "本批剩下的图会照常继续跑。",
+        ("retry", "关掉问卷，重投这一张"), ("feedback", "反馈给作者"),
+        steps=("在那个号的浏览器里点一下问卷的「跳过」或任选一张",
+               "回来点「关掉问卷，重投这一张」——只重投这一张，不会重复烧其它图")),
 }
 
 # 文本任务（ask）的同一套分类，但**话术完全不同**：
@@ -229,6 +238,12 @@ _INFO_ASK: dict[str, FailureInfo] = {
         ("retry", "重问一次"), ("feedback", "反馈给作者"),
         steps=("点「重问一次」",
                "还是不行就点「反馈给作者」，日志会一起带上")),
+    "survey": FailureInfo(
+        "survey", "网页弹了偏好问卷", "偏好问卷",
+        "ChatGPT 弹出「你更喜欢哪一张图像？」的二选一问卷，这一条没拿到结果。",
+        ("retry", "关掉问卷，重问一次"), ("feedback", "反馈给作者"),
+        steps=("在那个号的浏览器里点一下问卷的「跳过」或任选一张",
+               "回来点「关掉问卷，重问一次」")),
 }
 
 _CODE_TO_CLS = {
@@ -239,6 +254,7 @@ _CODE_TO_CLS = {
     "CONTENT_POLICY": "policy",
     "BROWSER_LOST": "page",
     "NO_LANE": "network",
+    "SURVEY_BLOCKED": "survey",
     # 文本任务（ask）
     "ASK_EMPTY": "empty",
     "ASK_TIMEOUT": "unsure",

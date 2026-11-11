@@ -23,6 +23,8 @@ CANCELLED = "CANCELLED"                # 人为取消
 BUSY = "BUSY"                          # 同一账号正忙
 NO_REF_FILE = "NO_REF_FILE"            # 参考图路径不存在（派单方给了不存在的文件）
 BROWSER_LOST = "BROWSER_LOST"          # 等图时浏览器/页面断了
+SURVEY_BLOCKED = "SURVEY_BLOCKED"      # ChatGPT 弹「你更喜欢哪一张图像？」偏好问卷，
+                                       # 两个候选是空灰块、取不到图（确定没出图，可重投这一张）
 # 文本任务（ask）
 ASK_EMPTY = "ASK_EMPTY"                # 网页里没读到这次的回复
 ASK_TIMEOUT = "ASK_TIMEOUT"            # 等到超时，回复可能没写完
@@ -36,7 +38,7 @@ ASK_FAILED = "ASK_FAILED"              # 其它文本失败
 # 混成"渲染失败"会让用户和 AI 都去改提示词、查额度，白折腾。
 ERROR_CODES = (AUTH_REQUIRED, QUOTA_COOLDOWN, RENDER_FAILED, NO_LANE,
                TIMEOUT_UNCERTAIN, CANCELLED, BUSY, NO_REF_FILE, BROWSER_LOST,
-               ASK_EMPTY, ASK_TIMEOUT, ASK_SEND, ASK_FAILED)
+               SURVEY_BLOCKED, ASK_EMPTY, ASK_TIMEOUT, ASK_SEND, ASK_FAILED)
 
 # 驱动的 kind → 对外错误码
 _KIND_TO_CODE = {
@@ -48,6 +50,7 @@ _KIND_TO_CODE = {
     "no_lane": NO_LANE,
     "no-ref": NO_REF_FILE,
     "browser-lost": BROWSER_LOST,
+    "survey": SURVEY_BLOCKED,
 }
 
 # ---- 任务状态

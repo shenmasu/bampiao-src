@@ -23,7 +23,7 @@
 
 ## 当前状态
 
-这份源码快照对应开发版本 **0.2.62**，用于项目透明度和个人学习。构建与测试说明见 [`BUILD-README.md`](BUILD-README.md)，第三方许可见 [`THIRD_PARTY.md`](THIRD_PARTY.md)。
+这份源码快照对应开发版本 **0.2.63**，用于项目透明度和个人学习。构建与测试说明见 [`BUILD-README.md`](BUILD-README.md)，第三方许可见 [`THIRD_PARTY.md`](THIRD_PARTY.md)。
 
 仓库不含发布用二进制包、更新清单、账号数据、密钥、令牌或浏览器 profile。自行构建时，请自己负责环境和合规。
 

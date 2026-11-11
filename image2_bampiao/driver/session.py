@@ -198,6 +198,10 @@ def _classify(rc: int, out_dir: Path, tail: str) -> str:
         res = None
     if isinstance(res, dict) and res.get("quota"):
         return "quota"
+    # 偏好问卷挡住：确定没出图，别归成 timeout/empty（那会让上游标
+    # TIMEOUT_UNCERTAIN 并跳过本批剩余条目）。
+    if isinstance(res, dict) and res.get("survey_blocked"):
+        return "survey"
     if rc == -9:
         # 我们主动杀的（超时）：图可能已经在远端生成，这比"粘贴失败"重要得多。
         # 顺序不能错——一次跑里既有粘贴失败又超时被杀时，要先报"不确定"，

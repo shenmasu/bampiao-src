@@ -105,6 +105,9 @@ _PROBE_JS = """async () => {
 # 每次出图都会打开首页，浏览器必然处于登录态——这是升级用户补齐档位最自然的时机，
 # 不用重新登录、不用额外启动浏览器、也不碰后台补扫的「绝不启动浏览器」约束。
 SESSION_PLAN = {"v": ""}
+# 本次运行是否被「你更喜欢哪一张图像？」偏好问卷挡住（写进 _result.json，上层据此
+# 标 SURVEY_BLOCKED，而不是 TIMEOUT_UNCERTAIN——后者会把本批剩余条目全部连带跳过）。
+SURVEY_BLOCKED = {"v": False}
 STATE = os.path.join(_DATA, "state", "driver_state.json")
 ITEMS = os.path.join(_DATA, "state", "items.json")
 
@@ -288,13 +291,21 @@ async def wait_not_busy(pg, timeout=180, blank_grace=20, reload_stuck=True):
     return False
 
 
+def _survey_mod():
+    """取偏好问卷模块。绝不静默吞异常：17 天前这里 `import survey` 指向一个
+    从未创建的模块，被 `except: return False` 吞掉，功能假存在到出事才被发现。"""
+    from . import survey  # noqa: PLC0415
+
+    return survey
+
+
 async def dismiss_survey(pg, tag=""):
-    """关掉「你更喜欢哪一张图像？」偏好问卷（实现在 survey.py，可单独测）。"""
+    """关掉「你更喜欢哪一张图像？」偏好问卷（实现在 driver/survey.py，可单测）。"""
     try:
-        import survey
-        return await survey.dismiss(pg, tag)
-    except Exception:
-        return False
+        return await _survey_mod().dismiss(pg, tag=tag, log=log)
+    except Exception as e:  # noqa: BLE001
+        log(f"    !! {tag} 偏好问卷模块不可用：{str(e)[:100]}")
+        return {"present": False, "clicked": False}
 
 
 def _write_result(out_dir, ok=0, fail=0, flags=None, states=None, extra=None) -> None:
@@ -306,6 +317,10 @@ def _write_result(out_dir, ok=0, fail=0, flags=None, states=None, extra=None) ->
     # 所有出口（成功/失败/草稿）都带，只要打开首页时读到了。
     if SESSION_PLAN["v"]:
         _extra["plan"] = SESSION_PLAN["v"]
+    # 问卷挡住且始终没出图：给上层一个明确的「确定没出图」信号，
+    # 别再按 TIMEOUT_UNCERTAIN 处理（那个语义会连带跳过本批剩余条目）。
+    if SURVEY_BLOCKED["v"]:
+        _extra["survey_blocked"] = True
     result.write(out_dir, ok=ok, fail=fail, quota=bool(QUOTA_HIT["v"]),
                  paste_failed=int(PASTE_FAIL["n"]), flags=flags, states=states, extra=_extra)
 
@@ -1052,6 +1067,13 @@ async def wait_img(pg, before, task, known, timeout=600, want=None, need_alpha=F
     dup_streak = 0
     retry_n = 0
     reject_log = {}          # 记录已经播报过的拒绝原因，避免每 2 秒刷一行
+    survey_at = None         # 本条第一次看到「你更喜欢哪一张图像？」问卷的时间
+    last_survey_check = 0.0
+    try:
+        survey = _survey_mod()
+    except Exception as e:  # noqa: BLE001
+        log(f"    !! {task} 偏好问卷模块不可用：{str(e)[:100]}")
+        survey = None
     ref_imgs = []
     for r in (refs or []):
         try:
@@ -1060,6 +1082,22 @@ async def wait_img(pg, before, task, known, timeout=600, want=None, need_alpha=F
             pass
     while time.time() - t0 < timeout:
         await pg.wait_for_timeout(2000)
+
+        # 偏好问卷（免费版随机 AB）：两个候选是空灰块、DOM 里没有 img，
+        # blob_srcs 永远扫不到；不处理会白等到超时（R444 H4 等了 273 秒，
+        # 整单标 TIMEOUT_UNCERTAIN，后面 3 张被连带跳过）。
+        # 每 10 秒检测一次；出现就尽力点掉，之后给 60 秒出图宽限。
+        if survey is not None and time.time() - last_survey_check > 10:
+            last_survey_check = time.time()
+            try:
+                seen = await survey.detect(pg)
+            except Exception:
+                seen = {"present": False}
+            if seen.get("present") and survey_at is None:
+                survey_at = time.time()
+                log(f"    !! {task} 出现「你更喜欢哪一张图像？」偏好问卷，试着关掉")
+                await dismiss_survey(pg, tag=task)
+
         turns = await get_turns(pg)
         t = find_turn(turns, task)
 
@@ -1274,6 +1312,14 @@ async def wait_img(pg, before, task, known, timeout=600, want=None, need_alpha=F
             await pg.mouse.wheel(0, 700)
         except Exception:
             pass
+
+        # 见过问卷、点过按钮，又等了 60 秒仍没图：确定这一张没出，提前收手。
+        # 别再熬到 300/600 秒被判成 TIMEOUT_UNCERTAIN——那个错误码语义是
+        # 「远端可能已出图」，会把本批剩余条目全部跳过（R444 的 H5/H6/H7）。
+        if survey_at is not None and time.time() - survey_at > 60:
+            SURVEY_BLOCKED["v"] = True
+            log(f"    !! {task} 偏好问卷后 60 秒仍没出图：提前收手（SURVEY_BLOCKED）")
+            return None
     return None
 
 

@@ -962,10 +962,13 @@ _KIND_CODE = {"auth": "AUTH_REQUIRED", "quota": "QUOTA_COOLDOWN",
               "busy": "BUSY", "paste": "PASTE_FAILED",
               # 参考图不存在是"改文件"的事，跟提示词、网络都无关。
               # 以前漏了这一条，全归成 GENERATE_FAILED，agent 会去改提示词白折腾。
-              "no-ref": "NO_REF_FILE"}
+              "no-ref": "NO_REF_FILE",
+              # 「你更喜欢哪一张图像？」偏好问卷：确定没出图，别归成不确定
+              "survey": "SURVEY_BLOCKED"}
 
 _KIND_RC = {"auth": EXIT_ACTION, "quota": EXIT_ACTION, "timeout": EXIT_TIMEOUT,
-            "busy": EXIT_INTERNAL, "paste": EXIT_ACTION, "no-ref": EXIT_ACTION}
+            "busy": EXIT_INTERNAL, "paste": EXIT_ACTION, "no-ref": EXIT_ACTION,
+            "survey": EXIT_ACTION}
 
 
 def _rc_for_kind(kind: str) -> int:
