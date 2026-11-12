@@ -42,9 +42,9 @@ bampiao = "image2_bampiao.cli:main"
 bampiao-desktop = "image2_bampiao.desktop:main"
 
 [project.urls]
-Homepage = "https://hezhuzi.com/bampiao/"
+Homepage = "https://hezhuzi.com/lab/bampiao/"
 Repository = "https://github.com/shenmasu/bampiao-src"
-Changelog = "https://hezhuzi.com/bampiao/#log"
+Changelog = "https://hezhuzi.com/lab/bampiao/#log"
 
 [tool.setuptools]
 packages = [
