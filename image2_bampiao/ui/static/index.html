@@ -151,6 +151,19 @@ code{background:#ECEAE4;border-radius:0;padding:0 4px;font:12px var(--mono)}
 .step h3{margin:3px 0 4px;font:700 15px/1.4 var(--serif)}
 .step p{margin:0 0 10px;font-size:13px;color:var(--ink2)}
 .step .agent{margin:0;box-shadow:none;background:#FAF9F6}
+/* 引导·支持的 AI（2026-11-12 改版） */
+.supports{background:var(--sheet);border:1px solid var(--line);padding:12px 14px;margin-bottom:12px;box-shadow:2px 2px 0 rgba(34,31,26,.06)}
+.supports-h{font-size:12px;color:var(--faint);margin-bottom:9px}
+.supports-row{display:flex;align-items:center;gap:6px 10px;flex-wrap:wrap}
+.supports-row .sai{display:flex;align-items:center;gap:6px;font-size:12px;color:var(--ink2)}
+.supports-row .sai .ic{width:22px;height:22px;border-radius:6px;display:inline-flex;align-items:center;justify-content:center;
+  font:700 11px/1 var(--sans);color:#fff;flex:none;overflow:hidden}
+.supports-row .sai .ic img{width:100%;height:100%;object-fit:contain}
+/* 引导·怎么用的例子 */
+.step .eg{background:#FAF9F6;border:1px solid var(--line);padding:11px 14px;margin:8px 0 0}
+.step .eg ol{margin:0;padding-left:18px}
+.step .eg li{margin:6px 0;font-size:13px;color:var(--ink2)}
+.step .eg li .k{color:var(--zhu);font-weight:600}
 .step.done{opacity:.7}
 .step.done .sn{background:var(--qing);border-color:var(--qing);color:#fff;font-size:0}
 .step.done .sn::after{content:"✓";font-size:15px}
@@ -569,45 +582,38 @@ tr.row:focus-visible{background:var(--zhubg)}
 <div class="page">
 
   <section id="pgStart" hidden>
-    <div class="ph"><h1>上手</h1><p>三步走完就能用。以后不用再看这页，想回来在「设置」里找</p></div>
+    <div class="ph"><h1>上手</h1></div>
+    <div class="supports">
+      <div class="supports-h">这些真的都可以 ↓</div>
+      <div class="supports-row" id="supportsRow"></div>
+    </div>
     <div class="step" id="st1">
       <i class="sn">一</i>
       <div class="sb">
-        <h3>加一个账号，登录你的 ChatGPT</h3>
-        <p id="st1t">半瓢用你自己的 ChatGPT 会员出图。到「账号」页点「＋」，选浏览器，在弹出的窗口里登录。</p>
+        <h3>加账号</h3>
+        <p id="st1t">半瓢用 ChatGPT 网页版出图，不额外花钱。到「账号」页点「＋」，在弹出的窗口里登录你的 ChatGPT。</p>
         <button class="btn zhu sm" id="st1go">去账号页</button>
       </div>
     </div>
-    <div class="step" id="st2">
+    <div class="step" id="st3">
       <i class="sn">二</i>
       <div class="sb">
-        <h3>让你的 Agent 认识半瓢</h3>
-        <p>点一下，写进你电脑上所有 AI 的说明里。写完会逐家告诉你结果——没成的话会自动把诊断发出去。</p>
-        <div class="agent" id="agent">
-      <div class="aMain">
-        <button class="btn pri" id="aGlobalOne">交给所有 AI</button>
-        <span class="aHint" id="aHint">Claude Code · Codex · WorkBuddy · opencode · DeepSeek Harness · Gemini · Hermes</span>
-      </div>
-      <div class="aRes" id="aRes"></div>
-    </div>
-      </div>
-    </div>
-    <div class="step" id="st3">
-      <i class="sn">三</i>
-      <div class="sb">
-        <h3>让 AI 画一张试试</h3>
-        <p>打开你平时用的 AI（Claude、Codex、WorkBuddy 都行），把这句话发给它：</p>
-        <p><code id="st3say">用半瓢画一张水墨小猫，存到桌面</code>
-          <button class="btn sm" id="st3copy" style="margin-left:6px">复制这句话</button></p>
-        <p class="muted" style="font-size:12.5px">半瓢自己不出图——是 AI 替你把话和账号交过来，画好会自动出现在「任务」页。</p>
-        <p class="muted" style="font-size:12.5px">上面这几个都得是<b>能跑命令</b>的那种（Claude Code、Codex、WorkBuddy）。一个都还没装的话，先装一个再回来这一步；装了哪个都行，能跑通一个就够。</p>
-        <p class="muted" style="font-size:12.5px">只想让它先答一段、不画图？把话换成
-          <b>用半瓢问一句：把这段需求拆成三步</b>——回复会出现在「任务」页的<b>文本</b>里，点开能看全文、能复制。</p>
-        <button class="btn sm" id="st3go">去任务页看看</button>
+        <h3>怎么用</h3>
+        <p>打开你的 AI，每次要画图，就在话前面加一句「<b>用半瓢</b>」，可以这么说：</p>
+        <div class="eg">
+          <ol>
+            <li><span class="k">用半瓢</span>画我网站首页的效果图</li>
+            <li><span class="k">用半瓢</span>画一张小猫</li>
+            <li><span class="k">用半瓢</span>为我这篇读书笔记生成所有插图</li>
+          </ol>
+        </div>
+        <p style="margin-top:10px"><code id="st3say">用半瓢画一张小猫，存到桌面</code>
+          <button class="btn sm" id="st3copy" style="margin-left:6px">复制</button></p>
+        <p class="muted" style="font-size:12.5px">前提：那个 AI 得是能自己动手干活的 AI Agent（Claude Code、Codex、WorkBuddy、DeepSeek Harness 这类）。只会聊天的 AI 不会去执行，它只会把命令念给你听。</p>
       </div>
     </div>
     <div class="stDone" id="stDone" hidden>
-      <b>都好了。</b>以后打开半瓢就是「任务」页；想再看这页，去「设置」→「重新看上手引导」。
+      <b>都好了。</b>以后打开半瓢就是「任务」页。
       <button class="btn pri sm" id="stDoneGo">去任务页</button>
     </div>
   </section>
@@ -2004,7 +2010,7 @@ function paintAiResult(r){
   // 刚才顺手补的软链要明说，否则用户永远不知道终端里为什么能敲了 / 为什么不能。
   if(r.shim){ h+='<div class="aRow ok"><i>✓</i><b>命令行</b><span>已加进 PATH：'+esc(r.shim)+'</span></div>'; }
   if(good&&c.ok){
-    h+='<p class="aDone">好了。现在去第 3 步，跟你的 AI 说「画一张」，它会自己调半瓢。</p>';
+    h+='<p class="aDone">好了。以后跟你的 AI 说「用半瓢画…」，它会自己调半瓢。</p>';
   }else if(good&&!c.ok){
     h+='<p class="aWarn">说明写进去了，但命令行跑不起来——AI 会知道半瓢，却调不动它。</p>';
   }
@@ -2287,24 +2293,41 @@ $('#aNoticeGo').onclick=()=>go('accs');
 function renderStart(){
   const accs=S.accounts||[];
   const d1=accs.some(a=>a.login==='ok');
-  const g=S.global||{};
-  const d2=Object.keys(g).length>0 || store.get('bp_copied')==='1';
-  const d3=((S.summary||{}).images_ever||0)>0;     // 真出成过一张才算，光投了单不算
-  $('#st1').classList.toggle('done',d1); $('#st2').classList.toggle('done',d2); $('#st3').classList.toggle('done',d3);
-  $('#st1t').textContent=d1
+  const d3=((S.summary||{}).images_ever||0)>0 || store.get('bp_copied')==='1';  // 出过图 或 复制过话术 就算会用了
+  const el1=$('#st1'), el3=$('#st3');
+  if(el1) el1.classList.toggle('done',d1);
+  if(el3) el3.classList.toggle('done',d3);
+  const t=$('#st1t');
+  if(t) t.textContent=d1
     ?'已有登录好的账号：'+accs.filter(a=>a.login==='ok').map(a=>a.name).join('、')
-    :'半瓢用你自己的 ChatGPT 会员出图。到「账号」页点「＋」，选浏览器，在弹出的窗口里登录。';
-  const left=[d1,d2,d3].filter(x=>!x).length;
-  $('#tabStartN').textContent=left?left:'';
+    :'半瓢用 ChatGPT 网页版出图，不额外花钱。到「账号」页点「＋」，在弹出的窗口里登录你的 ChatGPT。';
+  const left=[d1,d3].filter(x=>!x).length;
+  const n=$('#tabStartN'); if(n) n.textContent=left?left:'';
   const all=!left;
-  $('#stDone').hidden=!all;
+  const done=$('#stDone'); if(done) done.hidden=!all;
   if(all){
     store.set('bp_onboarded','1');
-    // 也记到后端：窗口是无痕的，localStorage 关一次就没了，只靠它每次都从头引导
     if(!S._onbSent){ S._onbSent=true; post({do:'onboarded'}).catch(()=>{}); }
   }
-  $('#tabStart').hidden = store.get('bp_onboarded')==='1' && S.tab!=='start';
+  const tab=$('#tabStart'); if(tab) tab.hidden = store.get('bp_onboarded')==='1' && S.tab!=='start';
 }
+
+// 引导页「这些真的都可以」图标行（2026-11-12）：官方 logo 用内联 SVG，缺失时退字母块。
+const _SUPPORTED_AI=[
+  {name:'Codex',   color:'#10A37F', letter:'C'},
+  {name:'Claude',  color:'#D97757', letter:'A'},
+  {name:'WorkBuddy',color:'#4B6BFB',letter:'W'},
+  {name:'DeepSeek',color:'#4D6BFE', letter:'D'},
+  {name:'Gemini',  color:'#8A6AD6', letter:'G'},
+  {name:'Hermes',  color:'#2A2A2A', letter:'H'},
+];
+function renderSupports(){
+  const row=$('#supportsRow'); if(!row) return;
+  row.innerHTML=_SUPPORTED_AI.map(function(a){
+    return '<span class="sai"><span class="ic" style="background:'+a.color+'">'+a.letter+'</span>'+esc(a.name)+'</span>';
+  }).join('');
+}
+
 $('#st3copy').onclick=async()=>{
   const txt=$('#st3say').textContent;
   try{
@@ -2319,7 +2342,7 @@ $('#st3copy').onclick=async()=>{
   toast('已复制，去粘给你的 AI');
 };
 $('#st1go').onclick=()=>go('accs');
-$('#st3go').onclick=()=>go('jobs');
+if($('#st3go')) $('#st3go').onclick=()=>go('jobs');
 $('#stDoneGo').onclick=()=>{ go('jobs'); $('#tabStart').hidden=true; };
 $('#sGuide').onclick=()=>go('start');
 
@@ -2619,6 +2642,7 @@ document.addEventListener('keydown',e=>{
 });
 
 loadSkill();
+renderSupports();
 // 默认直接进任务页：WebView2 的 localStorage 是无痕的，读不到"已引导"，
 // 以前每次启动都先闪一下上手页再跳回来（2026-11-06 复评）。
 go('jobs');
