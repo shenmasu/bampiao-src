@@ -76,15 +76,18 @@ def check(url: str = MANIFEST_URL, timeout: float = 8.0) -> dict:
     except urllib.error.HTTPError as e:
         # 404 以前被当成"已是最新"，于是更新服务根本没上线时，面板也理直气壮说
         # "已经是最新版"——用户永远等不到新版本，还以为自己是最新的（2026-10-30 实测 404）。
+        # 2026-11-13：失败分支也带 checked_at，否则上层按"缓存过期"判断会每次请求都重查。
         if e.code == 404:
-            return {"ok": False, "current": __version__,
+            return {"ok": False, "current": __version__, "checked_at": time.time(),
                     "why": "更新服务还没上线（服务器上没有版本清单）"}
-        return {"ok": False, "current": __version__, "why": "更新服务器出错了（%d），过会儿再查" % e.code}
+        return {"ok": False, "current": __version__, "checked_at": time.time(),
+                "why": "更新服务器出错了（%d），过会儿再查" % e.code}
     except Exception as e:
-        return {"ok": False, "current": __version__,
+        return {"ok": False, "current": __version__, "checked_at": time.time(),
                 "why": "连不上更新服务器（%s），检查一下网络" % type(e).__name__}
     if not isinstance(d, dict):
-        return {"ok": False, "current": __version__, "why": "版本清单格式不对（不是对象）"}
+        return {"ok": False, "current": __version__, "checked_at": time.time(),
+                "why": "版本清单格式不对（不是对象）"}
     latest = str(d.get("version") or "")
     pkg = d.get(platform_key()) or {}
     # **按平台条目自己的版本算**。清单是"一个版本一次发版"，但 Mac 和 Windows

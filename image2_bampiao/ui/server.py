@@ -1002,8 +1002,16 @@ class Panel:
         return c
 
     def update_state(self) -> dict:
-        """给概览用：没查过就在后台查一次，不让面板等网络。"""
-        if self._UPD["check"] is None and not self._UPD["busy"]:
+        """给概览用：没查过、或缓存过期（30 分钟）就在后台重查一次，不让面板等网络。
+
+        2026-11-13 修 bug：原条件是「check 为 None 才查」——第一次查过之后
+        check 就永远不再是 None，于是**自动检查从此停摆**，设置页一直显示
+        「已是最新版本」，必须手动点一次「检查更新」才会真正去查。这正是用户
+        反馈「自动更新从没好用过」的根因之一。改成按 30 分钟缓存过期就重查。
+        """
+        _c0 = self._UPD.get("check")
+        _stale = (not _c0) or (time.time() - (_c0.get("checked_at", 0) or 0) > 1800)
+        if _stale and not self._UPD["busy"]:
             self._UPD["busy"] = True
 
             def bg():
