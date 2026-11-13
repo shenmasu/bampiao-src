@@ -610,6 +610,14 @@ tr.row:focus-visible{background:var(--zhubg)}
         <p style="margin-top:10px"><code id="st3say">用半瓢画一张小猫，存到桌面</code>
           <button class="btn sm" id="st3copy" style="margin-left:6px">复制</button></p>
         <p class="muted" style="font-size:12.5px">前提：那个 AI 得是能自己动手干活的 AI Agent（Claude Code、Codex、WorkBuddy、DeepSeek Harness 这类）。只会聊天的 AI 不会去执行，它只会把命令念给你听。</p>
+        <div class="agent" id="agent">
+          <div class="aMain">
+            <button class="btn pri" id="aGlobalOne">让 AI 认得半瓢</button>
+            <span class="aHint" id="aHint">点一下，把「半瓢怎么用」写进你电脑上所有 AI 的说明里（Claude · Codex · WorkBuddy · DeepSeek 等）。</span>
+          </div>
+          <div class="aRes" id="aRes"></div>
+        </div>
+        <p class="muted" style="font-size:12px">如果 AI 说「没找到半瓢」，多半是还没点上面这个按钮，点一下即可；点完请新开一个 AI 会话再试（技能在会话启动时加载）。</p>
       </div>
     </div>
     <div class="stDone" id="stDone" hidden>

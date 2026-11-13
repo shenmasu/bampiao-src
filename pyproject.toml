@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "bampiao"
-version = "0.2.66"
+version = "0.2.67"
 description = "半瓢：个人、非商业、非官方的本地命令行工具源码快照"
 readme = "README.md"
 requires-python = ">=3.12"
