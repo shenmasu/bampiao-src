@@ -1127,7 +1127,7 @@ function renderHttpCard(a, all){
   let pk='ok', pt='可出图';
   if(a.enabled===false){ pk='off'; pt='停用'; }
   else if(a.cooling){ pk='warn'; pt='限流 · 约 '+fmtWait(a.cooldown_left_min)+'后恢复'; }
-  else if(a.login==='required'){ pk='bad'; pt='登录失效 · 点⋯重新登录'; }
+  else if(a.login==='required'){ pk='bad'; pt=(a.last_error && (String(a.last_error).indexOf('登录失败')>=0||String(a.last_error).indexOf('no_auth')>=0||String(a.last_error).indexOf('失效')>=0))?'疑似失效（自动重登失败）· 建议重新导入':'登录失效 · 点⋯重新登录'; }
   else if(a.last_error){ pk='bad'; pt='连不通'; }
   else if(a.login!=='ok'){ pk='off'; pt='待检测'; }
   const rem=a.image_quota;
@@ -1162,14 +1162,15 @@ function paintHttpImport(){
   };
 }
 let _probeWatch=null;
-function watchQuotaProbe(btnSel){
+function watchQuotaProbe(btnSel, opts){
+  opts = opts || {};
   const btn=$(btnSel||'#bRefreshQuota');
   const _orig=btn?btn.textContent:'';
-  function paint(qp){
+  function paint(qp, slow){
     if(!btn) return;
     if(qp && qp.running){
       btn.hidden=false; btn.disabled=true;
-      btn.innerHTML='<span class="spin"></span> 探测中 '+(qp.done||0)+'/'+(qp.total||0);
+      btn.innerHTML='<span class="spin"></span> '+(slow?'验证中（较慢）…':'探测中 '+(qp.done||0)+'/'+(qp.total||0));
     } else { btn.disabled=false; btn.textContent=_orig||'刷新额度'; }
   }
   if(_probeWatch){ clearInterval(_probeWatch); _probeWatch=null; }
@@ -1179,10 +1180,19 @@ function watchQuotaProbe(btnSel){
     ticks++;
     try{
       const o=await j('/api/overview'); const qp=o.quota_probe||{};
-      paint(qp);
-      if(!qp.running){ clearInterval(_probeWatch); _probeWatch=null; toast('额度已刷新'); loadOverview(); if(S.tab==='stats') renderStats(); }
+      const slow = qp.running && ticks>25 && (qp.done||0)===0;
+      paint(qp, slow);
+      if(!qp.running){
+        clearInterval(_probeWatch); _probeWatch=null;
+        loadOverview(); if(S.tab==='stats') renderStats();
+        if(opts.accountId){
+          const a=(o.accounts||[]).filter(function(x){return x.id===opts.accountId})[0]||{};
+          if(a.login==='ok'){ toast(opts.okMsg||'重新登录成功，已可出图'); }
+          else { toast(opts.failMsg||'自动重登失败：疑似账号失效，建议删除后重新导入'); }
+        } else { toast(opts.doneMsg||'额度已刷新'); }
+      }
     }catch(e){ clearInterval(_probeWatch); _probeWatch=null; paint({running:false}); }
-    if(ticks>300){ clearInterval(_probeWatch); _probeWatch=null; paint({running:false}); }
+    if(ticks>150){ clearInterval(_probeWatch); _probeWatch=null; paint({running:false}); toast('探测超时（上游验证太久），请稍后再看状态'); loadOverview(); }
   }, 1200);
 }
 async function renderStats(){
@@ -1475,8 +1485,8 @@ function renderAccounts(list){
   // 右上「⋯」菜单：所有操作都在这
   $$('#accs [data-menu]').forEach(function(b){ b.onclick=function(e){ var id=b.dataset.menu; var a=(S.accounts||[]).filter(function(x){return x.id===id})[0]||{}; var isHttp=String(id).indexOf('http:')===0; var it=[];
     if(isHttp){
-      if(a.login==='required' || a.last_error){ it.push({t:'重新登录（自动，用已存密码）',fn:function(){ post({do:'http_quota_refresh',account:id}).then(function(r){ if(r.ok) watchQuotaProbe(); else toast(r.why||'失败'); }); }}); }
-      it.push({t:'检测 / 刷新（读额度）',fn:function(){ post({do:'http_quota_refresh',account:id}).then(function(r){ if(r.ok) watchQuotaProbe(); else toast(r.why||'失败'); }); }});
+      if(a.login==='required' || a.last_error){ it.push({t:'重新登录（自动，用已存密码）',fn:function(){ toast('正在重新登录…（约 10–60 秒，请稍候）'); post({do:'http_quota_refresh',account:id}).then(function(r){ if(r.ok) watchQuotaProbe(null,{accountId:id,okMsg:'重新登录成功，已可出图',failMsg:'自动重登失败：疑似账号失效，建议删除后重新导入'}); else toast(r.why||'失败'); }); }}); }
+      it.push({t:'检测 / 刷新（读额度）',fn:function(){ toast('正在检测并读取额度…'); post({do:'http_quota_refresh',account:id}).then(function(r){ if(r.ok) watchQuotaProbe(null,{accountId:id,okMsg:'检测完成，额度已更新',failMsg:'这个号仍登录失效，建议重新导入'}); else toast(r.why||'失败'); }); }});
     } else {
       it.push({t:(a.login==='ok'?'重新登录':'登录'),fn:function(){ act({do:'login',account:id},null,'正在打开…','登录窗口已弹出'); }});
       if(!a.email) it.push({t:'补邮箱',fn:function(){ act({do:'backfill_email',account:id},null,'正在补…','邮箱已补上'); }});
@@ -3142,7 +3152,7 @@ setInterval(()=>{
   // 自动升级倒计时只有 10 秒，空闲时 20 秒才拉一次会整个错过——倒计时期间每轮都拉。
   const autoCd=!!(S.update && S.update.auto_hint==='countdown');
   if(!autoCd){
-    if(!waiting && !S.running && _tick % 10 !== 0) return;
+    if(!waiting && !S.running && S.tab!=='accs' && _tick % 10 !== 0) return;
     if(!waiting && S.running && _tick % 3 !== 0) return;
   }
   loadOverview();
