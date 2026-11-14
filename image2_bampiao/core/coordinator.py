@@ -386,6 +386,23 @@ class Coordinator:
                 except Exception as e:
                     out = Outcome(False, "render", note="runner 异常：%s" % str(e)[:200])
 
+            # 2026-11-14：「停下这张」。用户在面板点了只停当前一张 → server 把 item id
+            # 记进 job.cancelled_items 并杀了驱动，这里 runner 会异常/失败返回。回读磁盘上的
+            # job，若这张确实被用户主动停了，就标 cancelled、continue 下一张——
+            # 不能当失败（否则会进 fail_streak / 触发自动换号重跑，正是用户看到的"换号又继续"）。
+            try:
+                _disk = self.store.load(job.id)
+                if _disk is not None and item.id in (getattr(_disk, "cancelled_items", None) or []):
+                    # 把磁盘上的取消标记同步回内存 job，避免随后 _save_progress 把它冲掉
+                    job.cancelled_items = list(_disk.cancelled_items or [])
+                    item.status = M.ITEM_CANCELLED
+                    item.error_code = "CANCELLED"
+                    item.reason = "你手动停下了这一张（其余继续）"
+                    self._save_progress(job)
+                    continue
+            except Exception:
+                pass
+
             if out.ok:
                 item.status = M.ITEM_OK
                 item.files = out.files or ([dest.name] if dest.exists() else [])
@@ -421,19 +438,41 @@ class Coordinator:
                     return {"status": M.JOB_QUEUED}
 
             if out.kind == "quota":
+                # 2026-11-14：撞额度不再整批放弃。多账号号池里，这个号满了别的号往往还有额度
+                # ——把这张+剩余标回 queued，换到下一个有额度的号接着画，用户无感。
+                # 只有"试遍了所有号 / 别的号也都不可用"才真停下。
+                self._mark_quota(acc, job, item)     # 这个号进冷却，usable_accounts 会排除它
+                job.auto_hops += 1
+                other = [a for a in self.usable_accounts() if a.id != acc.id]
+                if job.auto_hops <= self._max_hops() and other:
+                    # 还有别的能用的号 → 这张和剩余都回队列，下一轮换号继续
+                    item.status = M.ITEM_QUEUED
+                    item.error_code = None
+                    item.failure_class = ""
+                    item.reason = ""
+                    item.note = ""
+                    job.status = M.JOB_QUEUED
+                    job.reason = "「%s」额度满了，换到别的号继续画剩下的" % acc.name
+                    self.store.save(job)
+                    try:
+                        print("R%d 「%s」撞额度，改由别的号继续（还剩 %d 张没画）"
+                              % (job.id, acc.name, job.expected - job.rendered))
+                    except Exception:
+                        pass
+                    return {"status": M.JOB_QUEUED}
+                # 没别的号可用 或 换号次数用尽 → 真停，明确告诉还差几张
                 item.status = M.ITEM_FAILED
                 item.error_code = M.QUOTA_COOLDOWN
                 item.failure_class = "quota"
-                item.reason = "这个号的生成额度用完了：等冷却，或换一个号"
+                item.reason = "所有账号的生成额度都满了：等冷却，或加账号"
                 job.reason = item.reason
-                self._mark_quota(acc, job, item)
                 for rest in job.items:
                     if rest.status == M.ITEM_QUEUED:
                         rest.status = M.ITEM_SKIPPED
                         rest.error_code = M.QUOTA_COOLDOWN
                         rest.failure_class = "quota"
-                        rest.note = "撞上限后本批不再尝试"
-                        rest.reason = "这一批已经撞上限，剩下的没再试（省额度）"
+                        rest.note = "全部账号额度已满，剩下的没再试"
+                        rest.reason = "所有账号都撞上限了，剩下的等加号/冷却后再跑"
                 stop_reason = M.QUOTA_COOLDOWN
                 break
 

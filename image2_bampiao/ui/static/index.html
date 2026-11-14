@@ -513,11 +513,6 @@ details.more .in{padding:0 0 14px;font-size:13px;color:var(--ink2);line-height:1
 #attn .d{font-size:12.5px;color:var(--ink2);margin-top:2px}
 #attn .a{display:flex;gap:8px;margin-top:10px;flex-wrap:wrap}
 #pausedBar{margin-bottom:14px}
-#closeHint{margin-bottom:14px}
-#closeHint .box{border:1px solid var(--line2);background:#F7F5EF;padding:12px 14px}
-#closeHint .t{font:600 14px/1.5 var(--serif);color:var(--ink)}
-#closeHint .d{font-size:12.5px;color:var(--ink2);margin-top:2px;line-height:1.7}
-#closeHint .a{margin-top:10px}
 #pausedBar .box{border:1px solid var(--huangline);background:var(--huangbg);padding:12px 14px}
 #pausedBar .t{font:600 14px/1.5 var(--serif);color:var(--huang)}
 #pausedBar .d{font-size:12.5px;color:var(--ink2);margin-top:2px}
@@ -730,10 +725,6 @@ body{font:14px/1.7 var(--sans)}
 
     <div class="runs" id="runs"></div>
 
-    <div id="closeHint" hidden><div class="box"><div class="t">上次你只是把窗口收起来了，半瓢一直在后台跑</div>
-      <div class="d">任务不会因为关窗口而停。想再看到这个窗口：点右下角托盘图标（可能收在 ^ 里）。
-        要彻底退出：托盘右键 → 退出。</div>
-      <div class="a"><button class="btn sm" id="bHintOk">知道了</button></div></div></div>
     <div id="pausedBar" hidden><div class="box"><div class="t">队列已暂停，新投的单不会开跑</div>
       <div class="d">你之前点了「暂停队列」。想让 AI 继续画，点右边恢复。</div>
       <div class="a"><button class="btn pri sm" id="bResumeBar">恢复队列</button></div></div></div>
@@ -770,7 +761,7 @@ body{font:14px/1.7 var(--sans)}
   </section>
 
   <section id="pgAccs" hidden>
-    <div class="ph"><h1>账号</h1><p id="accHint"></p><div class="act">
+    <div class="ph"><h1>账号</h1><div class="act">
       <select id="accFilter" title="筛选账号"><option value="all">全部账号</option><option value="browser">浏览器号</option><option value="http">导入号</option><option value="needlogin">未登录</option></select>
       <input id="accSearch" placeholder="搜账号名/邮箱" style="width:160px">
       <button class="btn pri sm" id="bImportAcc" hidden>导入账号</button>
@@ -1030,9 +1021,7 @@ async function loadOverview(){
     ? (d.summary.today_ask||0) : (d.summary.today_images||0);
   if($('#ntLab')) $('#ntLab').textContent=(S.kind==='ask')?'今天（条回复）':'今天（张）';
   S.paused=d.paused;
-  const ch0=$('#closeHint'); if(ch0 && d.close_hint) ch0.hidden=false;
   const pb=$('#pausedBar'); if(pb) pb.hidden=!d.paused;
-  const ch=$('#closeHint'); if(ch && d.close_hint===false) ch.hidden=true;
   S.running=(d.summary&&d.summary.running)||0;
   S.runs=d.runs||[];
   S.ver=d.version||'';
@@ -1127,7 +1116,7 @@ function renderHttpCard(a, all){
   let pk='ok', pt='可出图';
   if(a.enabled===false){ pk='off'; pt='停用'; }
   else if(a.cooling){ pk='warn'; pt='限流 · 约 '+fmtWait(a.cooldown_left_min)+'后恢复'; }
-  else if(a.login==='required'){ pk='bad'; pt=(a.last_error && (String(a.last_error).indexOf('登录失败')>=0||String(a.last_error).indexOf('no_auth')>=0||String(a.last_error).indexOf('失效')>=0))?'疑似失效（自动重登失败）· 建议重新导入':'登录失效 · 点⋯重新登录'; }
+  else if(a.login==='required'){ pk='bad'; pt=(a.last_error && (String(a.last_error).indexOf('登录失败')>=0||String(a.last_error).indexOf('no_auth')>=0||String(a.last_error).indexOf('失效')>=0))?'疑似失效 · 建议重新导入或废弃':'登录失效 · 点⋯重新登录'; }
   else if(a.last_error){ pk='bad'; pt='连不通'; }
   else if(a.login!=='ok'){ pk='off'; pt='待检测'; }
   const rem=a.image_quota;
@@ -1393,10 +1382,6 @@ function renderAccounts(list){
   </div>`);
   el.innerHTML=cards.join('');
   const runningN=list.filter(a=>a.browser_running).length;
-  const hint=$('#accHint');
-  if(hint) hint.textContent = runningN
-    ? `浏览器开着 ${runningN} 个。收起窗口只是藏起来，进程还在占内存；闲置超过 ${S.idleRecycleMin||10} 分钟会自动关，也可以点「关掉浏览器」立刻释放。`
-    : '浏览器都没开，不占内存。';
   const allBtn=$('#bCloseAccBrowsers');
   if(allBtn){
     allBtn.hidden=!runningN;
@@ -1819,21 +1804,30 @@ function renderRunning(runs){
       <div class="b">${esc(x.brief||'（没有说明）')}</div>
       <div class="bar"><i style="width:${pct}%"></i></div>
       <div class="m"><span>已跑 ${dur}</span><span>${x.rendered} / ${x.expected} 张</span></div>${hint}
-      ${alive===false?'':`<div style="margin-top:8px"><button class="btn sm" data-stop="${x.id}">停下这张</button></div>`}</div>`;
+      ${alive===false?'':`<div style="margin-top:8px;display:flex;gap:8px;flex-wrap:wrap"><button class="btn sm" data-stop="${x.id}" title="只停当前这张，任务剩下的继续画">停下这张</button><button class="btn sm" data-cancelall="${x.id}" title="停掉整个任务，剩下的都不画了">停止整个任务</button></div>`}</div>`;
   }).join('');
   $$('#runs [data-stop]').forEach(b=>b.onclick=()=>{
     const id=+b.dataset.stop;
-    if(!confirm('停掉 R'+id+'？已经画好的会保留，没画完的那张作废。')) return;
+    if(!confirm('只停当前这一张？已经画好的保留，任务剩下的会继续画。')) return;
     b.disabled=true; b.textContent='正在停…';
-    post({do:'cancel',job:id}).then(r=>{
-      toast(r.ok?'已经停下了':'没停下：'+(r.why||''));
+    post({do:'cancel_item',job:id}).then(r=>{
+      toast(r.ok?'当前这张已停，其余继续':'没停下：'+(r.why||''));
       loadOverview(); loadJobs();
     }).catch(()=>{ b.disabled=false; b.textContent='停下这张' });
+  });
+  $$('#runs [data-cancelall]').forEach(b=>b.onclick=()=>{
+    const id=+b.dataset.cancelall;
+    if(!confirm('停掉整个任务 R'+id+'？已经画好的保留，剩下的都不再画了。')) return;
+    b.disabled=true; b.textContent='正在停…';
+    post({do:'cancel',job:id}).then(r=>{
+      toast(r.ok?'任务已停止':'没停下：'+(r.why||''));
+      loadOverview(); loadJobs();
+    }).catch(()=>{ b.disabled=false; b.textContent='停止整个任务' });
   });
   // 整张卡可点开详情：overview 已把在跑任务 id 返回，openJob 原生支持 running/queued，
   // 抽屉开着时每 2 秒自动刷新。排除「停下这张」，否则点它会同时弹抽屉。
   $$('#runs .rc[data-id]').forEach(el=>{
-    const open=(ev)=>{ if(ev.target.closest('[data-stop]')) return; openJob(+el.dataset.id); };
+    const open=(ev)=>{ if(ev.target.closest('[data-stop],[data-cancelall]')) return; openJob(+el.dataset.id); };
     el.onclick=open;
     el.onkeydown=(ev)=>{ if(ev.key==='Enter'||ev.key===' '){ev.preventDefault();open(ev)} };
   });
@@ -3008,10 +3002,6 @@ $('#fbSend').onclick=async()=>{
   }catch(e){
     showFbErr('没发出去，可能是网络不通。等网络好了再点一次「发送」。');
   }finally{ b.disabled=false; b.textContent=t; }
-};
-$('#bHintOk').onclick=async()=>{
-  await post({do:'close_hint_ack'}).catch(()=>{});
-  $('#closeHint').hidden=true;
 };
 $('#bResumeBar').onclick=()=>act({do:'resume'},$('#bResumeBar'),'恢复中…','已恢复');
 $('#bPause').onclick=()=>act({do:S.paused?'resume':'pause'},$('#bPause'),

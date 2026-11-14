@@ -164,6 +164,11 @@ class Job:
     # 质检标注（要动图却给静图 / 比例不符）。和 note 分开：
     # 失败重投后成功的单，note 里还留着上一次的失败原因，不能再当"标注"展示。
     quality_note: str = ""
+    # 2026-11-14：「停下这张」只停当前这一张，任务其余继续。这里记被用户主动停掉的
+    # item id 集合（落盘）。coordinator 每跑完一张会回读它，命中就标 cancelled、不换号、
+    # 不算失败，接着画下一张。用独立字段而不是看 item.status —— 因为内存里的 job 会被
+    # _save_progress 整份覆盖，item 状态不可靠。
+    cancelled_items: list[str] = field(default_factory=list)
 
     # ---- 派生量
     @property
@@ -242,6 +247,7 @@ class Job:
             kind=str(d.get("kind") or "image"),
             partial=bool(d.get("partial")),
             quality_note=str(d.get("quality_note") or ""),
+            cancelled_items=[str(x) for x in (d.get("cancelled_items") or [])],
         )
 
 

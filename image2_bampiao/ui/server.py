@@ -688,8 +688,12 @@ class Panel:
 
         job_id = int(body.get("job") or 0)
         if do == "cancel":
-            # 排队中：直接取消；在跑：杀驱动进程再取消（0.2.25 起支持）
+            # 停「整个任务」：所有排队/在跑的条目都作废，整单取消。
             return self._cancel(job_id)
+
+        if do == "cancel_item":
+            # 只停「当前这一张」：其余排队/后续条目继续画（2026-11-14）。
+            return self._cancel_item(job_id)
 
         if do == "retry":
             # allow_uncertain 只能由"我看过了"那个按钮带上来
@@ -2127,27 +2131,31 @@ class Panel:
         self.store.save(job)
         return {"ok": True, "marked": n, "all_done": not left}
 
+    def _kill_driver(self, acc) -> int:
+        """杀掉这个账号正在跑的驱动进程，返回 pid（没有就返回 0）。失败绝不抛。"""
+        if acc is None:
+            return 0
+        try:
+            from ..driver import session as _sess
+            from .. import platform as _plat
+
+            pid = _sess.read_driver_pid(self.cfg, acc)
+            if pid:
+                _plat.kill_tree(pid)
+                return int(pid)
+        except Exception:
+            pass
+        return 0
+
     def _cancel(self, job_id: int) -> dict:
-        """停下这一张：杀掉该号的驱动进程，条目标成取消（已出的图保留）。"""
+        """停「整个任务」：杀掉当前号的驱动，所有排队/在跑的条目都作废，整单取消。"""
         import time as _t
 
         job = self.store.load(job_id)
         if not job:
             return {"ok": False, "why": "没有 R%d" % job_id}
         acc = next((a for a in self.cfg.accounts if a.id == job.account_id), None)
-        killed = 0
-        if acc is not None:
-            try:
-                from ..driver import session as _sess
-
-                pid = _sess.read_driver_pid(self.cfg, acc)
-                if pid:
-                    from .. import platform as _plat
-
-                    _plat.kill_tree(pid)
-                    killed = pid
-            except Exception:
-                pass
+        killed = self._kill_driver(acc)
         from ..core.models import ITEM_CANCELLED, ITEM_QUEUED, JOB_CANCELLED  # noqa: F401
 
         for it in job.items:
@@ -2164,6 +2172,34 @@ class Panel:
         job.reason = "你手动停下了"
         self.store.save(job)
         return {"ok": True, "killed": killed}
+
+    def _cancel_item(self, job_id: int) -> dict:
+        """只停「当前这一张」：把正在跑的条目记进 cancelled_items 并杀驱动，
+        任务其余排队/后续条目**继续画**。已出的图保留。
+
+        实现要点：这里只做两件事——①记下要停的 item id（落盘，coordinator 会回读）；
+        ②杀掉当前号的驱动进程让它立刻停。coordinator 跑完这张后发现 id 命中
+        cancelled_items，就把它标 cancelled、不换号、不算失败，接着下一张。
+        """
+        from ..core.models import ITEM_RUNNING  # noqa: F401
+
+        job = self.store.load(job_id)
+        if not job:
+            return {"ok": False, "why": "没有 R%d" % job_id}
+        # 找当前正在跑的那一张；没有 running 的就拿第一张还没跑的（等价于"跳过下一张"）
+        cur = next((it for it in job.items if it.status == "running"), None)
+        if cur is None:
+            return {"ok": False, "why": "现在没有正在画的图（还没开始或已经跑完）"}
+        if cur.id not in job.cancelled_items:
+            job.cancelled_items.append(cur.id)
+        # 立刻标一下（让面板马上看到"已停下"），coordinator 随后也会确认一次
+        cur.status = "cancelled"
+        cur.error_code = "CANCELLED"
+        cur.reason = "你手动停下了这一张（其余继续）"
+        self.store.save(job)
+        acc = next((a for a in self.cfg.accounts if a.id == (job.ran_on or job.account_id)), None)
+        killed = self._kill_driver(acc)
+        return {"ok": True, "item": cur.id, "killed": killed}
 
     def _restart_browser(self, job_id: int) -> dict:
         """重启这个号的浏览器（页面卡住的主按钮）。"""

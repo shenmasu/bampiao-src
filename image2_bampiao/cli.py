@@ -1854,6 +1854,20 @@ def _keep_windows_hidden(cfg) -> None:
                      daemon=True, name="window-keeper").start()
 
 
+def _usable_accounts(cfg, store) -> list:
+    """现在真正能派单的号（没冷却、没掉登录）。给 jobs --json 报"还有几个号能用"。"""
+    out = []
+    for acc in cfg.accounts:
+        try:
+            st = store.account(acc.id)
+            if st.cooling() or st.login == "required":
+                continue
+            out.append(acc)
+        except Exception:
+            continue
+    return out
+
+
 def _skip_reasons(cfg, store) -> list[str]:
     """队列里有单却没跑：逐个账号说为什么，带上下一步命令。"""
     out = []
@@ -1939,6 +1953,27 @@ def cmd_jobs(a) -> int:
     d = store.query(limit=lim, offset=max(0, int(a.offset)), status=a.status,
                     account=a.account, tag=a.tag, q=a.q)
     if a.json:
+        # 2026-11-14：给 Agent 一次看全。每条补「还差几张 / 卡在哪」，
+        # 让 Agent 一条 jobs --json 就能判断要不要等、要不要补派，别重复派单烧额度。
+        rows = []
+        for j in d.get("rows") or []:
+            dd = j.as_dict() if hasattr(j, "as_dict") else dict(j)
+            pend = [it for it in (dd.get("items") or [])
+                    if it.get("status") in ("queued", "running")]
+            dd["pending_items"] = len(pend)
+            # 卡在哪：queued 且还有没跑的 → 看有没有号在冷却。其它状态也给默认值，
+            # 免得 Agent 读缺键报错（2026-11-14：子代理验证建议所有行都带这俩键）。
+            dd.setdefault("waiting_reason", "")
+            dd.setdefault("accounts_left", None)
+            if dd.get("status") == "queued" and pend:
+                try:
+                    usable = len(_usable_accounts(cfg, store))
+                except Exception:
+                    usable = 0
+                dd["waiting_reason"] = "quota" if usable == 0 else "pending"
+                dd["accounts_left"] = usable
+            rows.append(dd)
+        d["rows"] = rows
         _emit({"schema_version": 1, "ok": True, **d})
         return EXIT_OK
 
@@ -2600,6 +2635,70 @@ def cmd_login(a) -> int:
 
 # ------------------------------------------------------------------ 解析
 
+def cmd_gateway(a) -> int:
+    """共享网关：把本机 HTTP 号池按 OpenAI 兼容接口借给局域网 / Tailscale 上的人。"""
+    from . import gateway
+    cfg = cfg_mod.load(getattr(a, "config", None))
+    act = getattr(a, "gaction", None)
+    if act == "serve":
+        gateway.serve(cfg, host=(getattr(a, "host", "0.0.0.0") or "0.0.0.0"),
+                      port=(getattr(a, "port", 8788) or 8788), block=True)
+        return EXIT_OK
+    if act == "invite":
+        name = getattr(a, "name", None) or ident or "朋友"
+        keys = gateway.list_keys(cfg)
+        rec = next((k for k in keys if k.get("name") == name), None)
+        if not rec:
+            rec = gateway.add_key(cfg, name,
+                                  daily=(a.daily if getattr(a, "daily", None) is not None else 100),
+                                  concurrency=(a.concurrency if getattr(a, "concurrency", None) is not None else 3))
+        host = getattr(a, "host", None) or gateway.best_host()
+        port = getattr(a, "port", 8788) or 8788
+        txt = gateway.invite_paragraph(rec, host, port=port)
+        p = gateway.invite_file(cfg, txt, name)
+        print(txt)
+        print("\n（同一段话已存到：%s ，可直接把这个文件发给对方）" % p)
+        return EXIT_OK
+    if act == "key":
+        ksub = getattr(a, "kaction", "ls") or "ls"
+        ident = getattr(a, "kname", None) or getattr(a, "nameflag", None)
+        if ksub == "add":
+            daily = a.daily if getattr(a, "daily", None) is not None else 100
+            conc = a.concurrency if getattr(a, "concurrency", None) is not None else 3
+            rec = gateway.add_key(cfg, ident or "friend", daily=daily, concurrency=conc)
+            print("已生成调用 key：%s" % rec["key"])
+            print("  名称=%s  每日上限=%d 张  并发=%d" % (rec["name"], rec["daily_limit"], rec["concurrency"]))
+            return EXIT_OK
+        if ksub == "ls":
+            rows = gateway.list_keys(cfg)
+            if not rows:
+                print("还没有 key。用：bampiao gateway key add --name 朋友")
+                return EXIT_OK
+            for k in rows:
+                print("%-12s %-16s daily=%-5s 并发=%-3s %s" % (
+                    k.get("id"), k.get("name"), k.get("daily_limit"), k.get("concurrency"),
+                    "启用" if k.get("enabled", True) else "停用"))
+            return EXIT_OK
+        if ksub == "rm":
+            if not ident:
+                _err("要删哪个 key？bampiao gateway key rm <名字或id>", code="BAD_USAGE")
+                return EXIT_USAGE
+            print("已删除 %d 个 key" % gateway.rm_key(cfg, ident))
+            return EXIT_OK
+        if ksub == "limit":
+            if not ident:
+                _err("要改哪个 key？bampiao gateway key limit <名字> --daily N --concurrency M", code="BAD_USAGE")
+                return EXIT_USAGE
+            print("已更新 %d 个 key" % gateway.set_limit(
+                cfg, ident, daily=getattr(a, "daily", None), concurrency=getattr(a, "concurrency", None)))
+            return EXIT_OK
+    print("用法：")
+    print("  bampiao gateway serve --host 0.0.0.0 --port 8788")
+    print("  bampiao gateway key add --name 朋友 [--daily 100 --concurrency 3]")
+    print("  bampiao gateway key ls | rm <名字> | limit <名字> --daily N --concurrency M")
+    return EXIT_USAGE
+
+
 def build_parser() -> argparse.ArgumentParser:
     ap = _Parser(prog="bampiao", description="半瓢 · 本地出图台")
     ap.add_argument("--version", action="version", version="半瓢 %s" % __version__)
@@ -2794,6 +2893,25 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--no-browser", action="store_true", help="（已废弃，保留兼容）")
     p.add_argument("--json", action="store_true")
     p.set_defaults(func=cmd_ui)
+
+    p = sub.add_parser("gateway", help="共享网关：把本机 HTTP 号池按 OpenAI 接口借给局域网/Tailscale 上的人")
+    gsub = p.add_subparsers(dest="gaction")
+    ps = gsub.add_parser("serve", help="启动网关服务（默认 0.0.0.0:8788）")
+    ps.add_argument("--host", default="0.0.0.0")
+    ps.add_argument("--port", type=int, default=8788)
+    pk = gsub.add_parser("key", help="管理调用钥匙（每个 key 有每日张数/并发上限）")
+    pk.add_argument("kaction", nargs="?", default="ls", choices=["add", "ls", "rm", "limit"])
+    pk.add_argument("kname", nargs="?", help="名字或 id")
+    pk.add_argument("--name", dest="nameflag", help="名字（同 kname）")
+    pk.add_argument("--daily", type=int)
+    pk.add_argument("--concurrency", type=int)
+    pi = gsub.add_parser("invite", help="生成给某人的完整接入说明（地址/密钥/一段话/下载链接）")
+    pi.add_argument("--name")
+    pi.add_argument("--host")
+    pi.add_argument("--port", type=int, default=8788)
+    pi.add_argument("--daily", type=int)
+    pi.add_argument("--concurrency", type=int)
+    p.set_defaults(func=cmd_gateway)
 
     p = sub.add_parser("quit", help="让正在运行的半瓢退出（托盘里找不到它时用）")
     p.add_argument("--json", action="store_true")
