@@ -182,7 +182,12 @@ def skill_text(which: str = "paste") -> str:
             text = text.replace(_PATH_RULE_OLD, new)
         else:
             text = text.rstrip() + "\n" + new + "\n"
-    return text
+    # 2026-11-14：注入版本戳。升级后桌面壳启动时会据此判断「已装的说明是否过期」并自动刷新，
+    # 让老用户不用手动重新点「让 AI 认得半瓢」。
+    # **放末尾**：SKILL.md 开头是 frontmatter（---\nname: bampiao），WorkBuddy/Hermes 靠它在
+    # 第一行建索引，版本戳绝不能插在它前面，否则技能不被识别。
+    from . import __version__ as _bv
+    return text.rstrip() + "\n\n<!-- bampiao-skill-version: %s -->\n" % _bv
 
 
 _GLOBAL_BEGIN = "<!-- bampiao:begin 由半瓢写入，可整段删除 -->"
@@ -482,6 +487,36 @@ def global_installed(target: str) -> bool:
         return "bampiao" in text if mode == "file" else (_GLOBAL_BEGIN in text)
     except OSError:
         return False
+
+
+def refresh_installed_skills() -> list[str]:
+    """升级后把「已经装过的」AI 说明刷到当前版本。**只刷装过的，不主动新装。**
+
+    2026-11-14：老用户升级后，SKILL 是打包副本、不会自己更新，规则（免费号≤3张、
+    撞额度自动换号等）还是旧的。桌面壳启动时调一次这个：读已装文件里的版本戳，
+    低于当前版本就重写，让老用户无感拿到新规则。
+    """
+    import re
+
+    from . import __version__ as _bv
+    ver_re = re.compile(r"bampiao-skill-version:\s*([0-9][0-9A-Za-z.\-]*)")
+    refreshed: list[str] = []
+    for name in list(global_targets()) + list(skill_targets()):
+        try:
+            if not global_installed(name):
+                continue                    # 没装过 → 不动，别擅自往人家 AI 里写
+            p, _mode = _target_path(name)
+            if not (p and p.exists()):
+                continue
+            text = p.read_text(encoding="utf-8")
+            m = ver_re.search(text)
+            if m and m.group(1) == _bv:
+                continue                    # 已经是最新版本
+            install_global(name)            # 重写（file 覆写 / append 替换那一段）
+            refreshed.append(name)
+        except Exception:
+            continue
+    return refreshed
 
 
 def cmd_skill(a) -> int:

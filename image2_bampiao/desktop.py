@@ -919,6 +919,27 @@ def _start_worker(cfg) -> None:
 
         threading.Thread(target=_reap_stale, daemon=True, name="stale-reaper").start()
 
+        # 2026-11-14：升级后自动把「已装的 AI 说明」刷到当前版本（老用户不用手动重装 SKILL）。
+        # 只刷装过的、不新装；失败绝不影响界面。
+        # **self-test / 隔离数据目录的临时实例绝不刷**——否则测试会改到真实用户目录里的
+        # AGENTS.md、还会把临时目录里的 exe 路径写进去（2026-11-14 实测踩到）。
+        def _refresh_skills() -> None:
+            try:
+                if os.environ.get("BAMPIAO_DATA"):
+                    _note("skill-refresh:skipped (isolated data)")
+                    return
+                from .cli import refresh_installed_skills
+
+                done = refresh_installed_skills()
+                if done:
+                    print("已刷新 %d 个 AI 的技能说明到当前版本：%s"
+                          % (len(done), "、".join(done)))
+            except Exception:
+                pass
+
+        if not _state.get("selftest"):
+            threading.Thread(target=_refresh_skills, daemon=True, name="skill-refresh").start()
+
         # 升级流程为了等空档会临时暂停队列（pause.json 里 by=update）。
         # 如果装的过程中被打断（关机 / 装失败 / 用户取消），这份暂停会留下来，
         # 重启后半瓢就静默不干活——而且界面上看不出是谁停的。
@@ -1066,6 +1087,9 @@ def _install_crashlog() -> None:
 def run(selftest_seconds: float = 0.0, report: str | None = None) -> int:
     import webview
 
+    # 2026-11-14：自检实例不该改真实用户目录里的东西（如刷新 AI 技能说明），
+    # 记下来给 _start_worker 等地方判断。
+    _state["selftest"] = bool(selftest_seconds) or report is not None
     _note("import-ok")
     _install_crashlog()
     # 优先连本地面板（有真实数据）；面板起不来才退回静态页。
