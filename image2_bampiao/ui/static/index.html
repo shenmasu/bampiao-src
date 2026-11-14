@@ -275,6 +275,30 @@ textarea:focus,input:focus,select:focus{border-color:var(--ink2)}
 .acc .kv span{font-size:12px;color:var(--dim)}
 .acc .say{font-size:13px;line-height:1.7;margin-bottom:10px}
 .acc .say.zhu{color:var(--zhu)}.acc .say.huang{color:var(--huang)}
+/* 2026-11-14 账号卡重做：紧凑 4 层，额度「剩 23/25」，今日缩成小字 */
+.acc{min-height:auto;padding:12px 14px 10px}
+.acc.off{opacity:.62}
+.accH{display:flex;align-items:center;gap:7px}
+.accH .nm{font:700 15px/1.3 var(--serif);color:var(--ink);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.accId{display:flex;align-items:center;gap:8px;margin:3px 0 0;font-size:12.5px;color:var(--dim)}
+.accId .who{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.accId .qt{margin-left:auto;font:11px var(--mono);color:var(--faint);white-space:nowrap}
+.accSt{display:flex;align-items:center;gap:10px;margin:9px 0;flex-wrap:wrap}
+.accSt .stt{font-size:13px;font-weight:600;color:var(--ink2)}
+.accSt .stt.zhu{color:var(--zhu)}.accSt .stt.huang{color:var(--huang)}.accSt .stt.muted{color:var(--dim)}
+.accSt .qbadge{font-family:var(--mono);font-size:13px;font-weight:700;color:var(--ink);font-variant-numeric:tabular-nums}
+.accSt .qbadge .cap{color:var(--faint);font-weight:400}
+.accSt .qbadge b{font-weight:700}
+.accSt .qbadge b.qing{color:var(--qing)}.accSt .qbadge b.zhu{color:var(--zhu)}
+.accSt .tdy{margin-left:auto;font:11px var(--mono);color:var(--faint)}
+.acc .ops{border-top:1px dashed var(--line);padding-top:8px;margin-top:auto}
+.accs{grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:12px}
+.accs.dense{grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:8px}
+.accs.dense .acc .kv{display:none}
+.num,.tiles b,.hb .v,.accSt .qbadge,.accSt .tdy{font-variant-numeric:tabular-nums}
+.stack{display:flex;height:16px;border:1px solid var(--line);margin:8px 0;overflow:hidden;background:#EAE7E0}
+.stack i{display:block;height:100%}
+.chart-t{font-size:13px;color:var(--ink2);margin-bottom:6px}
 .acc .ops{margin-top:auto;display:flex;align-items:center;gap:12px;padding-top:8px;border-top:1px dashed var(--line)}
 .acc .ops .btn{margin-right:auto}
 /* 订阅档位小标签：unknown = 没探到，绝不猜（已过期的 Plus 也可能只显示 free） */
@@ -547,6 +571,65 @@ tr.row:focus-visible{background:var(--zhubg)}
 .prob .a{display:flex;gap:8px;margin-top:12px;flex-wrap:wrap}
 .prob.done{border-color:var(--line2);background:#F7F5EF}
 .prob.done .h{color:var(--qing)}
+/* ===== 2026-11-14 排版精修 v2：只改视觉，不动逻辑 ===== */
+:root{ --paper:#F4F2ED; --sheet:#FFFFFF; --line:#E4E1D9; --line2:#CFCABF; }
+body{font:14px/1.7 var(--sans)}
+.ph h1{letter-spacing:2px}
+.accs{align-items:start}
+.acc{min-height:auto;padding:15px 16px 12px;border-radius:0}
+.accH{display:flex;align-items:center;gap:8px;margin-bottom:6px}
+.accH .nm{font:700 16px/1.3 var(--sans);letter-spacing:.2px;color:var(--ink);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.accH .pl{margin-left:auto;flex:none}
+.accH .pl + .pl{margin-left:0}
+.accId{display:flex;align-items:baseline;gap:8px;font-size:12.5px;color:var(--dim);margin-bottom:11px}
+.accId .who{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;min-width:0}
+.accId .qt{flex:none;font:11px var(--mono);color:var(--faint)}
+.accSt{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:12px}
+.pill{display:inline-flex;align-items:center;gap:5px;font-size:12px;line-height:1;padding:5px 9px;border:1px solid var(--line2);background:#fff;font-weight:600;letter-spacing:.2px;white-space:nowrap}
+.pill .dot{width:7px;height:7px;border-radius:50%;flex:none}
+.pill.ok{color:var(--qing);border-color:#CFE0D6;background:var(--qingbg)} .pill.ok .dot{background:var(--qing)}
+.pill.warn{color:var(--huang);border-color:#E6D6A8;background:var(--huangbg)} .pill.warn .dot{background:var(--huang)}
+.pill.bad{color:var(--zhu);border-color:#E7C4B8;background:var(--zhubg)} .pill.bad .dot{background:var(--zhu)}
+.pill.off{color:var(--dim);border-color:var(--line);background:#F2F0EB} .pill.off .dot{background:var(--dim)}
+.pill.quota{font-family:var(--mono);color:var(--ink);background:#FBFAF6;border-color:var(--line)}
+.pill.quota b{font-size:14px;font-weight:700;margin-left:2px}
+.pill.today{color:var(--faint);border:0;background:none;font-weight:400;font-family:var(--mono);padding-left:0}
+.acc .ops{border-top:1px solid var(--line);padding-top:10px;margin-top:0;display:flex;gap:12px;align-items:center}
+.acc .ops .lk{font-size:12.5px}
+.tiles div{padding:18px 18px 15px}
+.tiles b{font:600 26px/1.15 var(--mono);letter-spacing:-.5px}
+.tiles span{font-size:12px;color:var(--dim);letter-spacing:.3px}
+.chart{padding:18px 18px 14px}
+.chart .legend{font-size:12.5px;color:var(--dim);margin-bottom:10px;letter-spacing:.3px}
+.hb{grid-template-columns:150px 1fr 48px;font-size:13.5px}
+.hb .trk{height:12px}
+/* ===== 2026-11-14 卡片 v3：类型图标 + 名字/邮箱 + 状态/额度 + 右上⋯菜单 ===== */
+.acc{padding:14px 15px 12px}
+.accH{display:flex;align-items:center;gap:8px;margin-bottom:2px}
+.accH .nm{flex:1;min-width:0;font:700 15.5px/1.3 var(--sans);color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.accH .pl{flex:none}
+.accH .accMenuBtn{flex:none}
+.accIco{width:26px;height:26px;flex:none;display:inline-flex;align-items:center;justify-content:center;border:1px solid var(--line);background:#fff;border-radius:6px;padding:0;cursor:pointer}
+.accIco img{width:16px;height:16px;display:block}
+.accIco.key{cursor:default;font-size:14px;background:#FBFAF6}
+.accIco:hover{border-color:var(--zhu)}
+.accMail{font-size:12.5px;color:var(--dim);line-height:1.5;margin:6px 0 11px;word-break:break-all}
+.accMenuBtn{font:700 15px/1 var(--mono);color:var(--dim);padding:4px 9px;border:1px solid var(--line);background:#fff;border-radius:6px}
+.accMenuBtn:hover{color:var(--zhu);border-color:var(--zhu)}
+.rng{display:inline-flex;border:1px solid var(--line);margin-right:8px;vertical-align:middle}
+.rng button{border:0;border-right:1px solid var(--line);background:#fff;padding:6px 12px;font:12.5px var(--sans);color:var(--dim);cursor:pointer}
+.rng button:last-child{border-right:0}
+.rng button.on{background:var(--ink);color:#F7F2E8}
+.kpi{padding:16px 18px}
+.kpi .kl{font-size:12px;color:var(--dim);letter-spacing:.3px}
+.kpi .kv{font:600 26px/1.15 var(--mono);letter-spacing:-.5px;margin-top:7px;font-variant-numeric:tabular-nums;white-space:nowrap}
+.kpi .kv i{font-style:normal;font-size:12px;color:var(--faint);font-family:var(--sans);margin-left:4px;letter-spacing:0}
+/* dense 用旧规则会把新卡挤扁，这里统一覆盖 */
+.accs.dense{grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:10px}
+.accs.dense .acc{min-height:auto;padding:13px 14px 11px}
+.accs.dense .acc .nm{font-size:15px}
+.accs.dense .acc .say{font-size:12px}
+.accH .nm{white-space:normal;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;word-break:break-word}
 </style>
 </head>
 <body>
@@ -559,6 +642,7 @@ tr.row:focus-visible{background:var(--zhubg)}
     <button class="tab" data-tab="start" id="tabStart">上手<em id="tabStartN"></em></button>
     <button class="tab on" data-tab="jobs" id="tabJobs">任务<em id="tabJobsN"></em></button>
     <button class="tab" data-tab="accs">账号<em id="tabAccN"></em></button>
+    <button class="tab" data-tab="stats">统计</button>
     <button class="tab" data-tab="set">设置<em id="tabSetN" title="有新版本"></em></button>
   </nav>
   <div class="sfoot">
@@ -584,7 +668,7 @@ tr.row:focus-visible{background:var(--zhubg)}
   <section id="pgStart" hidden>
     <div class="ph"><h1>上手</h1></div>
     <div class="supports">
-      <div class="supports-h">这些真的都可以 ↓</div>
+      <div class="supports-h" style="line-height:1.7;color:var(--ink2)">注意：<br>1. 必须用 AI Agent（Claude Code、Codex、WorkBuddy、DeepSeek Harness 这类），而不是只能聊天的 AI。<br>2. 另外，要确认你是在「本地/电脑」模式下运行，而不是「云端」</div>
       <div class="supports-row" id="supportsRow"></div>
     </div>
     <div class="step" id="st1">
@@ -599,7 +683,15 @@ tr.row:focus-visible{background:var(--zhubg)}
       <i class="sn">二</i>
       <div class="sb">
         <h3>怎么用</h3>
-        <p>打开你的 AI，每次要画图，就在话前面加一句「<b>用半瓢</b>」，可以这么说：</p>
+        <div class="agent" id="agent">
+          <div class="aMain">
+            <button class="btn pri" id="aGlobalOne">让 AI 认得半瓢</button>
+            <span class="aHint" id="aHint">点一下，把「半瓢怎么用」写进你电脑上所有 AI 的说明里（Claude · Codex · WorkBuddy · DeepSeek · Windsurf · Qwen 等）。</span>
+          </div>
+          <div class="aRes" id="aRes"></div>
+        </div>
+        <p class="muted" style="font-size:12px">如果 AI 说「没找到半瓢」，多半是还没点上面这个按钮，点一下即可；点完请新开一个 AI 会话再试（技能在会话启动时加载）。</p>
+        <p style="margin-top:14px">打开你的 AI，每次要画图，就在话前面加一句「<b>用半瓢</b>」，可以这么说：</p>
         <div class="eg">
           <ol>
             <li><span class="k">用半瓢</span>画我网站首页的效果图</li>
@@ -609,15 +701,6 @@ tr.row:focus-visible{background:var(--zhubg)}
         </div>
         <p style="margin-top:10px"><code id="st3say">用半瓢画一张小猫，存到桌面</code>
           <button class="btn sm" id="st3copy" style="margin-left:6px">复制</button></p>
-        <p class="muted" style="font-size:12.5px">前提：那个 AI 得是能自己动手干活的 AI Agent（Claude Code、Codex、WorkBuddy、DeepSeek Harness 这类）。只会聊天的 AI 不会去执行，它只会把命令念给你听。</p>
-        <div class="agent" id="agent">
-          <div class="aMain">
-            <button class="btn pri" id="aGlobalOne">让 AI 认得半瓢</button>
-            <span class="aHint" id="aHint">点一下，把「半瓢怎么用」写进你电脑上所有 AI 的说明里（Claude · Codex · WorkBuddy · DeepSeek 等）。</span>
-          </div>
-          <div class="aRes" id="aRes"></div>
-        </div>
-        <p class="muted" style="font-size:12px">如果 AI 说「没找到半瓢」，多半是还没点上面这个按钮，点一下即可；点完请新开一个 AI 会话再试（技能在会话启动时加载）。</p>
       </div>
     </div>
     <div class="stDone" id="stDone" hidden>
@@ -628,7 +711,7 @@ tr.row:focus-visible{background:var(--zhubg)}
 
   <section id="pgJobs" hidden>
     <div class="ph"><h1>任务</h1>
-      <p>你的 AI 用半瓢花的每一份额度都记在这里——出图、问话都在 · <a href="#" id="aHowTo" style="color:var(--qing)">怎么用</a></p>
+      <p><a href="#" id="aHowTo" style="color:var(--qing)">怎么用</a></p>
       <div class="act">
         <span class="kindbar" id="kindBar">
           <button class="btn sm on" data-kind="image" aria-pressed="true">出图</button>
@@ -646,27 +729,6 @@ tr.row:focus-visible{background:var(--zhubg)}
 
 
     <div class="runs" id="runs"></div>
-
-    <div id="yWrap" hidden>
-      <div class="tiles" id="ynums"></div>
-      <details class="more" id="yMore">
-        <summary>出图图表（近 14 天）</summary>
-        <div class="in">
-    <div class="sec" id="yDayTitle">每天出图<small>按账号分色，悬停看明细</small></div>
-    <div class="chart" id="ychart"><div class="legend" id="ylegend"></div><div id="ysvg"></div><div class="tip" id="ytip"></div></div>
-    <div class="two">
-      <div>
-        <div class="sec">成败<small>近 14 天每一条任务</small></div>
-        <div class="chart"><div class="hbars" id="yout"></div></div>
-      </div>
-      <div>
-        <div class="sec">按标签</div>
-        <div class="chart"><div class="hbars" id="ytags"></div></div>
-      </div>
-    </div>
-        </div>
-      </details>
-    </div>
 
     <div id="closeHint" hidden><div class="box"><div class="t">上次你只是把窗口收起来了，半瓢一直在后台跑</div>
       <div class="d">任务不会因为关窗口而停。想再看到这个窗口：点右下角托盘图标（可能收在 ^ 里）。
@@ -708,7 +770,13 @@ tr.row:focus-visible{background:var(--zhubg)}
   </section>
 
   <section id="pgAccs" hidden>
-    <div class="ph"><h1>账号</h1><p id="accHint"></p><div class="act"><button class="btn sm" id="bCloseAccBrowsers" hidden>关掉所有浏览器</button></div></div>
+    <div class="ph"><h1>账号</h1><p id="accHint"></p><div class="act">
+      <select id="accFilter" title="筛选账号"><option value="all">全部账号</option><option value="browser">浏览器号</option><option value="http">导入号</option><option value="needlogin">未登录</option></select>
+      <input id="accSearch" placeholder="搜账号名/邮箱" style="width:160px">
+      <button class="btn pri sm" id="bImportAcc" hidden>导入账号</button>
+      <button class="btn sm" id="bRefreshQuota" hidden title="重新探测所有导入号剩余额度">全部检测/刷新额度</button>
+      <button class="btn sm" id="bCloseAccBrowsers" hidden>关掉所有浏览器</button>
+    </div></div>
     <div class="accs" id="accs"></div>
   <details class="more" id="pgChats" style="margin-top:22px">
     <summary>清理半瓢在 ChatGPT 里开过的会话</summary>
@@ -728,6 +796,17 @@ tr.row:focus-visible{background:var(--zhubg)}
   </section>
 
 
+
+  <section id="pgStats" hidden>
+    <div class="ph"><h1>统计</h1><p>只读统计 · 全部数据来自本机台账</p><div class="act"><span class="rng" id="statsRange"><button data-d="7">7 天</button><button data-d="14" class="on">14 天</button><button data-d="30">30 天</button><button data-d="all">历史累计</button></span><button class="btn sm" id="bStatsRefresh" hidden>刷新额度</button></div></div>
+    <div class="sec">一、额度</div>
+    <div class="chart" id="quotaHero" style="margin-bottom:14px"></div>
+    <div class="chart" id="chartQuota" style="margin-bottom:22px"></div>
+    <div class="sec">二、出图与账号</div>
+    <div class="chart" id="outHero" style="margin-bottom:14px"></div>
+    <div class="chart" id="chartTrend" style="margin-bottom:14px"></div>
+    <div class="chart" id="chartRate"></div>
+  </section>
 
   <section id="pgSet" hidden>
     <div class="ph"><h1>设置</h1><p>弱水三千，只取半瓢饮</p></div>
@@ -775,7 +854,7 @@ tr.row:focus-visible{background:var(--zhubg)}
         <span class="muted">个账号并行</span>
         <button class="btn sm" id="concSave">保存</button>
       </div>
-      <div class="say muted">有几个号最多就能并行几个（最多 8 个）；并行越多，同时开着的浏览器和内存也越多（13 个号实测约 2.5 GB）。改完要重启半瓢才生效。</div>
+      <div class="say muted">并行越多越占用内存，改完要重启半瓢才生效。</div>
     </div>
     <div class="sec">跑在哪</div>
     <div class="info">
@@ -809,6 +888,14 @@ tr.row:focus-visible{background:var(--zhubg)}
         </div>
         <div class="swState" id="stUpd">读…</div>
         <button class="sw" id="swUpd" role="switch" aria-checked="false" aria-label="自动更新" disabled></button>
+      </div>
+      <div class="pref">
+        <div class="txt">
+          <div class="t">账号导入</div>
+          <div class="d">打开后可在「账号」页批量粘贴导入免费号（HTTP 号池，走网页接口出图）。</div>
+        </div>
+        <div class="swState" id="stHttp">读…</div>
+        <button class="sw" id="swHttp" role="switch" aria-checked="false" aria-label="账号导入" disabled></button>
       </div>
     </div>
     <div class="sec">更多</div>
@@ -870,7 +957,7 @@ tr.row:focus-visible{background:var(--zhubg)}
 
 <script>
 const $=s=>document.querySelector(s), $$=s=>[...document.querySelectorAll(s)];
-const S={tab:'jobs',offset:0,limit:24,status:'all',account:'all',tag:'all',q:'',
+const S={tab:'jobs',offset:0,limit:24,status:'all',account:'all',tag:'all',q:'',httpEnabled:false,accFilter:'all',accSearch:'',httpSummary:{},statsDays:14,
          kind:'image',       // 默认看出图；文本是另一个 tab（用户 2026-11-06 定）
          lbList:[],lbIdx:0,cur:null,paused:false,chats:[],running:0,accName:{},hover:false,
          pendingNew:null,view:'ledger',attn:{count:0,by_class:{},jobs:[],total_jobs:0,by_kind:{}},
@@ -970,6 +1057,8 @@ async function loadOverview(){
   S.accountCount=d.account_count||0;
   S.account_strategy=d.account_strategy||'balance';
   S.account_fixed_id=d.account_fixed_id||'';
+  S.httpEnabled=!!d.http_pool_enabled;
+  S.httpSummary=d.http_summary||{};
   paintConc();
   S.browsers=d.browsers||[];
   const active=(d.summary.queued||0)+(d.summary.running||0);
@@ -1025,8 +1114,231 @@ function planLabel(p){
     return {text:s.slice(0,8),cls:'pro'};
   return {text:s.slice(0,8),cls:'unk'};
 }
+function fmtWait(mins){
+  mins=Math.max(0, Math.round(mins||0));
+  if(mins<=0) return '';
+  if(mins<60) return mins+' 分钟';
+  const h=Math.floor(mins/60), mm=mins%60;
+  return h+' 小时'+(mm?(' '+mm+' 分'):'');
+}
+function fmtTime(sec){ if(!sec) return '–'; try{ var d=new Date(sec*1000); var p=function(n){return (n<10?'0':'')+n;}; return (d.getMonth()+1)+'/'+d.getDate()+' '+p(d.getHours())+':'+p(d.getMinutes()); }catch(e){ return '–'; } }
+function renderHttpCard(a, all){
+  const pl=planLabel(a.plan), who=a.email||'';
+  let pk='ok', pt='可出图';
+  if(a.enabled===false){ pk='off'; pt='停用'; }
+  else if(a.cooling){ pk='warn'; pt='限流 · 约 '+fmtWait(a.cooldown_left_min)+'后恢复'; }
+  else if(a.login==='required'){ pk='bad'; pt='登录失效 · 点⋯重新登录'; }
+  else if(a.last_error){ pk='bad'; pt='连不通'; }
+  else if(a.login!=='ok'){ pk='off'; pt='待检测'; }
+  const rem=a.image_quota;
+  const qpill=(rem==null)?'':'<span class="pill quota">剩 <b>'+rem+'</b> 张</span>';
+  const today=(a.today>0)?'<span class="pill today">今日 '+a.today+' 张</span>':'';
+  const tip=a.quota_checked_at?('上次检测 '+fmtTime(a.quota_checked_at)):'还没检测过';
+  return '<div class="acc'+(a.enabled===false?' off':'')+'">'
+    +'<div class="accH"><span class="accIco key" title="导入号（HTTP 号池）">🔑</span>'
+      +'<span class="nm" title="'+esc(a.name)+'">'+esc(a.name)+'</span>'
+      +'<span class="pl '+pl.cls+'">'+pl.text+'</span>'
+      +'<button class="accMenuBtn" data-menu="'+esc(a.id)+'" title="更多操作">⋯</button></div>'
+    +'<div class="accMail" title="'+esc(who)+'">'+esc(who)+'</div>'
+    +'<div class="accSt"><span class="pill '+pk+'" title="'+esc(tip)+'"><span class="dot"></span>'+esc(pt)+'</span>'+qpill+today+'</div>'
+    +'</div>';
+}
+function paintHttpImport(){
+  const sw=$('#swHttp'), st=$('#stHttp');
+  if(!sw||!st) return;
+  const on=!!S.httpEnabled;
+  _paintSwitch('#swHttp','#stHttp',on);
+  sw.disabled=false;
+  sw.onclick=async()=>{
+    sw.disabled=true;
+    try{
+      const x=await post({do:'http_enabled_set', on:!on});
+      if(!x.ok){ toast(x.why||'没改成功'); sw.disabled=false; return; }
+      S.httpEnabled=!!x.enabled;
+      _paintSwitch('#swHttp','#stHttp',S.httpEnabled);
+      toast(S.httpEnabled?'已打开账号导入，去「账号」页导入':'已关闭账号导入');
+      loadOverview();
+    }catch(e){ toast(e.message); sw.disabled=false; }
+  };
+}
+let _probeWatch=null;
+function watchQuotaProbe(btnSel){
+  const btn=$(btnSel||'#bRefreshQuota');
+  const _orig=btn?btn.textContent:'';
+  function paint(qp){
+    if(!btn) return;
+    if(qp && qp.running){
+      btn.hidden=false; btn.disabled=true;
+      btn.innerHTML='<span class="spin"></span> 探测中 '+(qp.done||0)+'/'+(qp.total||0);
+    } else { btn.disabled=false; btn.textContent=_orig||'刷新额度'; }
+  }
+  if(_probeWatch){ clearInterval(_probeWatch); _probeWatch=null; }
+  paint({running:true,total:0,done:0});
+  let ticks=0;
+  _probeWatch=setInterval(async()=>{
+    ticks++;
+    try{
+      const o=await j('/api/overview'); const qp=o.quota_probe||{};
+      paint(qp);
+      if(!qp.running){ clearInterval(_probeWatch); _probeWatch=null; toast('额度已刷新'); loadOverview(); if(S.tab==='stats') renderStats(); }
+    }catch(e){ clearInterval(_probeWatch); _probeWatch=null; paint({running:false}); }
+    if(ticks>300){ clearInterval(_probeWatch); _probeWatch=null; paint({running:false}); }
+  }, 1200);
+}
+async function renderStats(){
+  const el=$('#statsCards'); if(!el) return;
+  const accs=S.accounts||[]; const hs=S.httpSummary||{};
+  const browserOk=accs.filter(function(a){return a.kind!=='http' && a.login==='ok' && a.enabled!==false}).length;
+  const total=accs.length;
+  const canGen=browserOk+(hs.valid||0);
+  const limited=hs.limited||0, remain=hs.remaining||0;
+  let st={};
+  try{ st=await j('/api/stats?days=14&kind=image'); }catch(e){ st={}; }
+  const today=(st.today!=null?st.today:0), d7=st.d7||0, d14=st.total||0, med=st.median_sec_per_image;
+  const oc=st.outcomes||{}; let fail=0; Object.keys(oc).forEach(function(k){ if(k!=='ok') fail+=oc[k]; });
+  const okN=oc.ok||0, calls=okN+fail, rate=calls?Math.round(okN*100/calls):null;
+  function card(v,t,sub){ return '<div style="background:var(--sheet);border:1px solid var(--line);padding:14px 16px;box-shadow:2px 2px 0 rgba(34,31,26,.07)">'
+    +'<div style="font-size:12px;color:var(--dim)">'+t+'</div>'
+    +'<div style="font-family:var(--mono);font-size:28px;font-weight:600;margin:4px 0">'+v+'</div>'
+    +(sub?'<div style="font-size:11.5px;color:var(--faint)">'+sub+'</div>':'')+'</div>'; }
+  el.innerHTML = card(total,'总账号','浏览器号+导入号')
+    + card(canGen,'可出图','')
+    + card(limited,'限流中','')
+    + card(remain,'剩余额度','导入号合计')
+    + card(today,'今日出图','张')
+    + card(d7,'近7天出图','张')
+    + card(d14,'近14天出图','张')
+    + card(rate==null?'–':(rate+'%'),'成功率','成功/总调用')
+    + card(med==null?'–':(med+' 秒'),'每张中位耗时','');
+  const byacc=st.by_account||{}; const rows=[];
+  Object.keys(byacc).forEach(function(k){ const arr=byacc[k]||[]; const tot=arr.reduce(function(a,b){return a+b},0); const last7=arr.slice(-7).reduce(function(a,b){return a+b},0); rows.push({k:k,tot:tot,last7:last7,name:(S.accName&&S.accName[k])||k}); });
+  rows.sort(function(a,b){return b.tot-a.tot});
+  const rk=$('#statsRank');
+  if(rk){ if(!rows.length){ rk.innerHTML='<div class="empty">还没有出图记录。</div>'; } else { rk.innerHTML='<table class="ledger"><thead><tr><th>账号</th><th>近7天</th><th>近14天</th></tr></thead><tbody>'+rows.slice(0,40).map(function(r){return '<tr><td>'+esc(r.name)+'</td><td class="n">'+r.last7+'</td><td class="n">'+r.tot+'</td></tr>';}).join('')+'</tbody></table>'; } }
+  const rb=$('#bStatsRefresh'); if(rb){ rb.hidden=!S.httpEnabled; rb.textContent='刷新额度'; rb.onclick=async function(){ if(rb.disabled) return; rb.disabled=true; try{ const r=await post({do:'http_quota_refresh'}); if(!r.ok){ toast(r.why||'失败'); rb.disabled=false; return; } watchQuotaProbe('#bStatsRefresh'); }catch(e){ toast(e.message); rb.disabled=false; } }; }
+}
+async function renderStats(){
+  const accs=S.accounts||[], hs=S.httpSummary||{};
+  const browserOk=accs.filter(function(a){return a.kind!=='http'&&a.login==='ok'&&a.enabled!==false}).length;
+  const total=accs.length, canGen=browserOk+(hs.valid||0), limited=hs.limited||0, remain=hs.remaining||0;
+  let st={}; try{ st=await j('/api/stats?days=14&kind=image'); }catch(e){ st={}; }
+  const series=st.series||[], today=st.today||0, d7=st.d7||0, d14=st.total||0, med=st.median_sec_per_image;
+  const oc=st.outcomes||{}; let fail=0; Object.keys(oc).forEach(function(k){ if(k!=='ok') fail+=oc[k]; });
+  const okN=oc.ok||0, calls=okN+fail, rate=calls?Math.round(okN*100/calls):null;
+  function tile(v,t,sub){ return '<div><b>'+v+'</b><span>'+t+'</span>'+(sub?'<span style="display:block;font-size:11px;color:var(--faint)">'+sub+'</span>':'')+'</div>'; }
+  const k1=$('#kpiTop'); if(k1) k1.innerHTML = tile(total,'总账号','浏览器+导入')+tile(canGen,'可出图','')+tile(limited,'限流中','')+tile(remain,'剩余额度','导入号合计')+tile(today,'今日出图','张');
+  const k2=$('#kpiSub'); if(k2) k2.innerHTML = tile(d7,'近7天','张')+tile(d14,'近14天','张')+tile(rate==null?'–':(rate+'%'),'成功率','成功/总调用')+tile(med==null?'–':(med+'s'),'每张中位耗时','');
+  (function(){ const el=$('#chartTrend'); if(!el)return;
+    const W=760,H=200,L=34,B=26,T=10; const max=Math.max(1,...series.map(function(p){return p.n}));
+    const bw=(W-L-10)/Math.max(1,series.length); let g='';
+    for(var gi=0;gi<=4;gi++){ var gy=T+(H-T-B)*gi/4; var gv=Math.round(max*(4-gi)/4); g+='<line class="gl" x1="'+L+'" y1="'+gy+'" x2="'+W+'" y2="'+gy+'"></line><text class="ax" x="'+(L-6)+'" y="'+(gy+4)+'" text-anchor="end">'+gv+'</text>'; }
+    series.forEach(function(p,i){ var h=Math.max(p.n>0?2:0, Math.round((p.n/max)*(H-T-B-4))); var x=L+i*bw+bw*0.18, y=(H-B)-h, w=bw*0.64;
+      if(p.n>0){ g+='<rect x="'+x.toFixed(1)+'" y="'+y+'" width="'+w.toFixed(1)+'" height="'+h+'" fill="var(--lan)"></rect>'; }
+      if(i%2===0){ g+='<text class="ax" x="'+(x+w/2).toFixed(1)+'" y="'+(H-8)+'" text-anchor="middle">'+p.date.slice(5)+'</text>'; }
+    });
+    var tot=series.reduce(function(s,p){return s+p.n},0);
+    el.innerHTML='<div class="legend"><span><i style="background:var(--lan)"></i>每天出图张数</span><span style="color:var(--faint)">近 14 天 · 共 '+tot+' 张</span></div><svg viewBox="0 0 '+W+' '+H+'" preserveAspectRatio="none">'+g+'</svg>';
+  })();
+  (function(){ const el=$('#chartTop'); if(!el)return; const ba=st.by_account||{}; const rows=[];
+    Object.keys(ba).forEach(function(k){ const arr=ba[k]||[]; rows.push({name:(S.accName&&S.accName[k])||k, tot:arr.reduce(function(a,b){return a+b},0), color:(S.accColor&&S.accColor[k])||'var(--lan)'}); });
+    rows.sort(function(a,b){return b.tot-a.tot}); const top=rows.slice(0,10); const max=Math.max(1,...top.map(function(r){return r.tot}));
+    let h='<div class="legend">按账号出图 · Top 10（近14天）</div><div class="hbars">';
+    if(!top.length) h+='<div class="empty">还没有出图记录</div>';
+    top.forEach(function(r){ h+='<div class="hb"><span class="lab">'+esc(r.name)+'</span><span class="trk"><i style="width:'+Math.round(r.tot*100/max)+'%;background:'+r.color+'"></i></span><span class="v">'+r.tot+'</span></div>'; });
+    h+='</div>'; el.innerHTML=h;
+  })();
+  (function(){ const el=$('#chartRate'); if(!el)return; const r=54,c=2*Math.PI*r,len=(calls?okN/calls:0)*c;
+    let h='<div class="legend">成功率</div><svg viewBox="0 0 140 140" style="max-width:150px;margin:0 auto 6px;display:block">'
+      +'<circle cx="70" cy="70" r="'+r+'" fill="none" stroke="var(--line2)" stroke-width="16"></circle>'
+      +'<circle cx="70" cy="70" r="'+r+'" fill="none" stroke="var(--qing)" stroke-width="16" stroke-dasharray="'+len.toFixed(1)+' '+c.toFixed(1)+'" transform="rotate(-90 70 70)"></circle>'
+      +'<text x="70" y="66" text-anchor="middle" style="font:600 22px var(--mono);fill:var(--ink)">'+(rate==null?'–':rate+'%')+'</text>'
+      +'<text x="70" y="86" text-anchor="middle" class="ax">成功 '+okN+' · 失败 '+fail+'</text></svg>';
+    const fails=Object.keys(oc).filter(function(k){return k!=='ok'}).map(function(k){return {k:k,n:oc[k]}}).sort(function(a,b){return b.n-a.n}).slice(0,5);
+    if(fails.length){ const mx=Math.max(1,...fails.map(function(f){return f.n})); h+='<div class="hbars">'; fails.forEach(function(f){ h+='<div class="hb"><span class="lab">'+esc(f.k)+'</span><span class="trk"><i style="width:'+Math.round(f.n*100/mx)+'%;background:var(--zhu)"></i></span><span class="v">'+f.n+'</span></div>'; }); h+='</div>'; }
+    el.innerHTML=h;
+  })();
+  (function(){ const el=$('#chartQuota'); if(!el)return;
+    const http=accs.filter(function(a){return a.kind==='http'&&a.enabled!==false});
+    const sumH=http.reduce(function(s,a){return s+(a.image_quota||0)},0);
+    const bks=[{l:'0',min:0,max:0,n:0},{l:'1–4',min:1,max:4,n:0},{l:'5–9',min:5,max:9,n:0},{l:'10–24',min:10,max:24,n:0},{l:'25+',min:25,max:99999,n:0}];
+    http.forEach(function(a){ var r=a.image_quota||0; for(var i=0;i<bks.length;i++){ if(r>=bks[i].min&&r<=bks[i].max){ bks[i].n++; break; } } });
+    const mx=Math.max(1,...bks.map(function(b){return b.n})); const W=760,H=165,L=30,B=28,T=12,bw=(W-L)/bks.length;
+    let g='';
+    bks.forEach(function(b,i){ var h=Math.round(b.n/mx*(H-T-B)); var x=L+i*bw+bw*0.22, w=bw*0.56, y=(H-B)-h;
+      g+='<rect x="'+x.toFixed(1)+'" y="'+y+'" width="'+w.toFixed(1)+'" height="'+h+'" fill="'+(i===0?'var(--zhu)':'var(--qing)')+'"></rect>';
+      g+='<text class="ax" x="'+(x+w/2).toFixed(1)+'" y="'+(y-5)+'" text-anchor="middle">'+b.n+' 个</text>';
+      g+='<text class="ax" x="'+(x+w/2).toFixed(1)+'" y="'+(H-9)+'" text-anchor="middle">剩 '+b.l+'</text>';
+    });
+    el.innerHTML='<div class="chart-t">额度分布（按剩余档位 · 导入号池：'+http.length+' 个号）　剩余合计 <b class="mono">'+sumH+'</b> 张</div><svg viewBox="0 0 '+W+' '+H+'" preserveAspectRatio="none">'+g+'</svg>';
+  })();
+  const rb=$('#bStatsRefresh'); if(rb){ rb.hidden=!S.httpEnabled; rb.textContent='刷新额度'; rb.onclick=async function(){ if(rb.disabled) return; rb.disabled=true; try{ const r=await post({do:'http_quota_refresh'}); if(!r.ok){ toast(r.why||'失败'); rb.disabled=false; return; } watchQuotaProbe('#bStatsRefresh'); }catch(e){ toast(e.message); rb.disabled=false; } }; }
+}
+function openImportDialog(){
+  if(!S.httpEnabled){ toast('先到「设置 → 账号导入」打开开关'); return; }
+  if($('#impMask')) return;
+  const m=document.createElement('div');
+  m.id='impMask';
+  m.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.35);display:flex;align-items:center;justify-content:center;z-index:9999';
+  m.innerHTML='<div class="fbBox" style="max-width:600px;width:92%;background:var(--sheet);padding:18px;border:1px solid var(--line)">'
+    +'<div class="fbTitle">导入账号</div>'
+    +'<div class="fbSub">每行一个：<b>邮箱----密码----2FA密钥</b>（也支持只填 邮箱----密码）。可一次贴多个。</div>'
+    +'<textarea id="impText" rows="8" placeholder="a@x.com----password----2FASECRET&#10;b@x.com----password----2FASECRET" style="width:100%;font-family:var(--mono);font-size:12px"></textarea>'
+    +'<div class="fbSub" style="margin-top:8px">或单个填写：</div>'
+    +'<div style="display:flex;gap:6px;flex-wrap:wrap">'
+    +'<input id="impEmail" placeholder="邮箱" style="flex:1;min-width:160px">'
+    +'<input id="impPass" placeholder="密码" style="flex:1;min-width:120px">'
+    +'<input id="impTotp" placeholder="2FA密钥(可空)" style="flex:1;min-width:160px">'
+    +'</div>'
+    +'<input id="impProxy" placeholder="代理 http://...（可空）" style="width:100%;margin-top:6px">'
+    +'<div class="fbErr" id="impErr" hidden></div>'
+    +'<div class="fbErr" id="impResult" hidden></div>'
+    +'<div class="fbRow" style="margin-top:10px;display:flex;gap:8px;justify-content:flex-end">'
+    +'<button class="btn" id="impCancel">取消</button><button class="btn pri" id="impOk">导入</button></div>'
+    +'</div>';
+  document.body.appendChild(m);
+  const close=()=>m.remove();
+  $('#impCancel').onclick=close;
+  $('#impOk').onclick=async()=>{
+    let text=$('#impText').value||'';
+    const e=$('#impEmail').value.trim(), p=$('#impPass').value, t=$('#impTotp').value.trim();
+    if(e||p){ text=(text?text+'\n':'')+e+'----'+p+(t?'----'+t:''); }
+    if(!text.trim()){ const er=$('#impErr'); er.hidden=false; er.textContent='没有内容'; return; }
+    const btn=$('#impOk'); btn.disabled=true; btn.textContent='导入中…';
+    try{
+      const r=await post({do:'account_import', text:text, proxy:$('#impProxy').value.trim()});
+      if(!r.ok){ const er=$('#impErr'); er.hidden=false; er.textContent=r.why||'导入失败'; btn.disabled=false; btn.textContent='导入'; return; }
+      const inv=r.invalid||[];
+      if(inv.length){
+        const box=$('#impResult'); box.hidden=false;
+        box.innerHTML='已导入 '+r.added+' 个、更新 '+r.updated+' 个；但有 '+inv.length+' 行格式不对没导入：<br>'+inv.slice(0,50).map(function(x){return '第'+x.line+'行：'+esc(x.reason||'');}).join('<br>');
+        toast('部分行没导入，看看下面的提示'); btn.disabled=false; btn.textContent='再导入一次'; loadOverview();
+        return;
+      }
+      close(); toast(r.why||'已导入'); loadOverview(); watchQuotaProbe();
+    }catch(err){ const er=$('#impErr'); er.hidden=false; er.textContent=err.message; btn.disabled=false; btn.textContent='导入'; }
+  };
+}
+function closeAccMenu(){ var m=document.getElementById('accMenu'); if(m) m.remove(); }
+function openAccMenu(ev, items){
+  ev.stopPropagation(); closeAccMenu();
+  var m=document.createElement('div'); m.id='accMenu';
+  m.style.cssText='position:fixed;z-index:99999;background:#fff;border:1px solid var(--line2);box-shadow:2px 2px 0 rgba(34,31,26,.18);min-width:150px;padding:4px 0';
+  m.innerHTML=items.map(function(it,i){return '<button data-i="'+i+'" style="display:block;width:100%;text-align:left;border:0;background:none;padding:8px 14px;font:13px var(--sans);color:'+(it.danger?'var(--zhu)':'var(--ink)')+'">'+esc(it.t)+'</button>';}).join('');
+  document.body.appendChild(m);
+  var r=ev.currentTarget.getBoundingClientRect();
+  m.style.left=Math.max(6,Math.min(r.left, innerWidth-170))+'px'; m.style.top=(r.bottom+4)+'px';
+  m.querySelectorAll('button').forEach(function(b){ b.onclick=function(){ closeAccMenu(); var f=items[+b.dataset.i].fn; if(f) f(); }; });
+  setTimeout(function(){ document.addEventListener('click', closeAccMenu, {once:true}); },0);
+}
 function renderAccounts(list){
   const el=$('#accs');
+  list=(list||[]).slice();
+  const _f=S.accFilter||'all';
+  if(_f==='browser') list=list.filter(a=>a.kind!=='http');
+  else if(_f==='http') list=list.filter(a=>a.kind==='http');
+  else if(_f==='needlogin') list=list.filter(a=>a.login!=='ok');
+  const _q=(S.accSearch||'').trim().toLowerCase();
+  if(_q) list=list.filter(a=>((a.name||'')+' '+(a.email||'')).toLowerCase().indexOf(_q)>=0);
   // 账号多时自动紧凑：13 个号按 270px 一列要 5 行，紧凑后 3 行能看全
   el.classList.toggle('dense', list.length>=8);
   // 新建的号没登上会被后台撤掉：卡片消失时要说一声，不然人以为点了没反应
@@ -1039,57 +1351,35 @@ function renderAccounts(list){
     if(a && accState(a)==='ok'){ toast('「'+a.name+'」登录好了，可以出图了'); S.pendingNew=null; }
   }
   const cards=list.map(a=>{
+    if(a.kind==='http') return renderHttpCard(a, list);
     const k=accState(a), ph=a.login_phase||{};
     const who=a.email||ph.email||'';
     const pl=planLabel(a.plan);
     const brw=a.browser==='chrome'?'Chrome':(a.browser==='edge'?'Edge':esc(a.browser));
-    let say='', main='';
-    if(k==='wait'){
-      say='<div class="say zhu"><span class="spin"></span>登录窗口已经弹出来了，在那个窗口里登录 ChatGPT。登好它会自己收起来。</div>';
-      main=`<button class="btn sm" data-login="${esc(a.id)}">窗口没出来？再叫一次</button>`
-          +`<button class="lk" data-cancel="${esc(a.id)}">取消</button>`;
-    }else if(k==='ok'){
-      say='<div class="say muted">已登录，可以出图。</div>';
-    }else if(k==='cool'){
-      say=`<div class="say huang">额度用完了，在休息。还要 ${fmtMin(a.cooldown_left_min||0)}。</div>`;
-    }else if(k==='lost'){
-      say='<div class="say zhu">登录掉了，重新登一次就好。</div>';
-      main=`<button class="btn zhu sm" data-login="${esc(a.id)}">重新登录</button>`;
-    }else{
-      say='<div class="say">还没登录。点下面的按钮，会弹出一个专用浏览器窗口。</div>';
-      main=`<button class="btn zhu sm" data-login="${esc(a.id)}">登录</button>`;
-    }
-    const tools=k==='wait'?'':
-      `${main?'':'<span style="margin-right:auto"></span>'}`
-      +((a.login_phase||{}).phase==='shown'
-        ?`<button class="lk" data-hide="${esc(a.id)}">收起浏览器</button>`
-        :`<button class="lk" data-show="${esc(a.id)}" title="看看这个号的 ChatGPT 页面；平时它静默在后台">打开浏览器</button>`)
-      +(a.browser_running?`<button class="lk" data-close="${esc(a.id)}" data-name="${esc(a.name)}" title="彻底结束浏览器进程，释放内存；下次出图会自动重开，登录信息不丢">关掉浏览器</button>`:'')
-      +(who?'':`<button class="lk" data-fill="${esc(a.id)}" title="临时打开这个号的浏览器，读一次登录邮箱并写回">补邮箱</button>`)
-      +(list.length>1?`<button class="lk danger" data-rm="${esc(a.id)}" data-name="${esc(a.name)}">删除</button>`:'');
-    return `<div class="acc ${k==='wait'?'wait':''}">
-      <div class="top"><span class="st ${k==='ok'?'done':(k==='cool'?'partial':(k==='wait'||k==='lost'?'failed':'queued'))}"></span>
-        <span class="nm" title="点铅笔改名">${esc(a.name)}<button class="editnm" data-edit="${esc(a.id)}" data-name="${esc(a.name)}" title="改名">✎</button></span><span class="br" title="${brw}"><img src="/api/browser_icon?b=${esc(a.browser)}" alt="" onerror="this.style.display='none';var t=this.parentNode.querySelector('i');if(t)t.style.display='inline'"><i>${brw}</i></span></div>
-      <div class="whoRow">${who?`<span class="who">${esc(who)}</span>`:''}<span class="pl ${pl.cls}" title="订阅档位（来源：${esc(a.plan_source||'未记录')}）">${pl.text}</span></div>
-      ${a.window_ok===false?`<div class="say zhu">浏览器进程还在但窗口没了（假死）。点「打开浏览器」会自动重启它。</div>`:''}
-      ${a.paused_min>0?`<div class="say zhu">这个号被挂起约 ${a.paused_min} 分钟（多半是 Cloudflare 验证）。点「打开浏览器」处理，收起后自动恢复。</div>`:''}
-      <div class="kv">
-        <div><b>${a.today}</b><span>今天出图</span></div>
-        <div><b>${a.quota_today!=null?a.quota_today:0}</b><span>今天撞上限</span></div>
-        <div><b>${a.last_hit_after_n!=null?a.last_hit_after_n:'–'}</b><span>上次额度画到第几张</span></div>
-      </div>
-      ${say}
-      <div class="ops">${main}${tools}</div>
+    const bpk = k==='ok'?'ok':(k==='cool'?'warn':(k==='wait'?'warn':(k==='lost'?'bad':'off')));
+    const bpt = (a.enabled===false)?'停用':(k==='ok'?'可出图':(k==='cool'?('限流 · '+fmtWait(a.cooldown_left_min)+'后恢复'):(k==='wait'?'登录中':(k==='lost'?'登录失效，去重新登录':'未登录'))));
+    const tipb = a.login_checked_at?('上次检测 '+fmtTime(a.login_checked_at)):'还没检测过';
+    const shownNow = ((a.login_phase||{}).phase==='shown');
+    return `<div class="acc ${k==='wait'?'wait':''}" ${a.enabled===false?'style="opacity:.62"':''}>
+      <div class="accH"><button class="accIco brIco" data-br="${esc(a.id)}" title="${shownNow?'收起浏览器':'打开浏览器'}"><img src="/api/browser_icon?b=${esc(a.browser)}" alt=""></button>
+        <span class="nm" title="${esc(a.name)}">${esc(a.name)}</span>
+        <span class="pl ${pl.cls}" title="订阅档位（来源：${esc(a.plan_source||'未记录')}）">${pl.text}</span>
+        <button class="accMenuBtn" data-menu="${esc(a.id)}" title="更多操作">⋯</button></div>
+      <div class="accMail" title="${esc(who)}">${esc(who||'（还没读到邮箱）')}</div>
+      <div class="accSt"><span class="pill ${bpk}" title="${esc(tipb)}"><span class="dot"></span>${esc(bpt)}</span>${a.today>0?`<span class="pill today">今日 ${a.today} 张</span>`:''}</div>
+      ${a.window_ok===false?`<div class="say zhu" style="font-size:12px;margin:6px 0 0">浏览器进程在但窗口没了，点左侧浏览器图标会重启。</div>`:''}
+      ${a.paused_min>0?`<div class="say zhu" style="font-size:12px;margin:6px 0 0">被挂起约 ${a.paused_min} 分钟（多半是 Cloudflare 验证）。</div>`:''}
     </div>`;
   });
   const busy=list.some(a=>accState(a)==='wait');
   const BN={chrome:'Chrome',edge:'Edge'};
   const brs=S.browsers||[];
+  if(cards.length===0 && (_f!=='all' || _q)){ el.innerHTML='<div class="ledger"><div class="empty">没有符合条件的账号。<a href="#" id="accClearFilter" style="color:var(--qing)">清除筛选</a></div></div>'; const cf=$('#accClearFilter'); if(cf) cf.onclick=function(e){e.preventDefault();S.accFilter='all';S.accSearch='';var s=$('#accSearch');if(s)s.value='';var f=$('#accFilter');if(f)f.value='all';renderAccounts(S.accounts);}; return; }
   cards.push(`<div class="addTile ${busy?'off':''}" id="accNew" tabindex="0" ${busy?'title="先把正在登录的那个登完"':''}>
     <div class="addFace"><b>＋</b><span>添加账号</span>
       <small>${brs.length?'选一个浏览器，弹出窗口登好 ChatGPT 就行':'这台电脑上没找到 Chrome 或 Edge'}</small></div>
     <div class="addPick">${brs.map(b=>`<button class="pick" data-new="${b}" title="用 ${BN[b]} 登录新账号">
-      <img src="/api/browser_icon?b=${b}" alt="" onerror="this.outerHTML='<i>${BN[b][0]}</i>'"><span>${BN[b]}</span></button>`).join('')}</div>
+      <img src="/api/browser_icon?b=${b}" alt="" onerror="this.outerHTML='<i>${BN[b][0]}</i>'"><span>${BN[b]}</span></button>`).join('')}${S.httpEnabled?'<button class="pick" id="accImportPick" title="批量粘贴导入免费号（HTTP号池）"><i style="font-style:normal">🔑</i><span>导入</span></button>':''}</div>
   </div>`);
   el.innerHTML=cards.join('');
   const runningN=list.filter(a=>a.browser_running).length;
@@ -1114,6 +1404,18 @@ function renderAccounts(list){
     };
   }
   $$('#accs [data-new]').forEach(b=>b.onclick=()=>addAccount(b.dataset.new));
+  $$('#accs [data-en]').forEach(b=>b.onclick=async()=>{
+    const on = b.textContent.trim()==='启用';
+    b.disabled=true;
+    try{ const r=await post({do:'account_enabled_set',account:b.dataset.en,on:on});
+      if(r.ok){ toast(on?'已启用':'已停用·不再参与出图'); loadOverview(); }
+      else toast(r.why||'没改成功');
+    }catch(e){ toast(e.message); } finally { b.disabled=false; }
+  });
+  const _ip=$('#accImportPick'); if(_ip) _ip.onclick=openImportDialog;
+  const _bi=$('#bImportAcc'); if(_bi){ _bi.hidden=!S.httpEnabled; _bi.onclick=openImportDialog; }
+  const _rq=$('#bRefreshQuota'); if(_rq){ _rq.hidden=!S.httpEnabled; _rq.onclick=async()=>{ if(_rq.disabled) return; try{ const r=await post({do:'http_quota_refresh'}); if(!r.ok){ toast(r.why||'失败'); return; } }catch(e){ toast(e.message); return; } watchQuotaProbe(); }; }
+  const _af=$('#accFilter'); if(_af){ _af.value=S.accFilter||'all'; _af.onchange=e=>{ S.accFilter=e.target.value; renderAccounts(S.accounts); }; }
   $$('#accs [data-login]').forEach(b=>b.onclick=()=>
     act({do:'login',account:b.dataset.login},b,'正在打开…','登录窗口已弹出，去那个窗口里登'));
   $$('#accs [data-cancel]').forEach(b=>b.onclick=()=>
@@ -1122,14 +1424,7 @@ function renderAccounts(list){
     act({do:'browser_show',account:b.dataset.show},b,'正在打开…','浏览器已打开，看完点「收起浏览器」'));
   $$('#accs [data-hide]').forEach(b=>b.onclick=()=>
     act({do:'browser_hide',account:b.dataset.hide},b,'收起中…','已收起，回到后台静默'));
-  $$('#accs [data-close]').forEach(b=>b.onclick=()=>{
-    if(!confirm('关掉「'+(b.dataset.name||'')+'」的浏览器？下次出图会自动重新打开，登录信息不会丢。')) return;
-    act({do:'browser_down',account:b.dataset.close},b,'正在关…','浏览器已关掉');
-  });
-  // 老账号没邮箱：用户点一下才为「这一个号」临时拉起浏览器读回邮箱，
-  // 后台补扫线程仍然绝不自己启动浏览器（账号页刷新不能拉起 13 个号）。
-  $$('#accs [data-fill]').forEach(b=>b.onclick=()=>
-    act({do:'backfill_email',account:b.dataset.fill},b,'正在补…','邮箱已补上'));
+  // （每号「关掉浏览器」「补邮箱」已收进右上⋯菜单，见下）
   // 改名：不再弹 prompt 对话框，直接在名字上改（回车保存、Esc 取消、点别处也算保存）。
   // S.editing 期间 loadOverview 不重绘账号卡，否则 3 秒一次的轮询会把人打的字冲掉。
   $$('#accs [data-edit]').forEach(b=>b.onclick=e=>{
@@ -1161,10 +1456,37 @@ function renderAccounts(list){
     };
     inp.onblur=()=>finish(true);
   });
+  $$('#accs [data-q]').forEach(b=>b.onclick=async()=>{
+    b.disabled=true;
+    try{ const r=await post({do:'http_quota_refresh',account:b.dataset.q}); if(!r.ok){ toast(r.why||'失败'); } else { watchQuotaProbe(); } }
+    catch(e){ toast(e.message); } finally { b.disabled=false; }
+  });
   $$('#accs [data-rm]').forEach(b=>b.onclick=()=>{
-    if(!confirm('删除账号「'+(b.dataset.name||'')+'」？它的浏览器会一起关掉。登录信息还留在电脑上，以后加回来不用重登。')) return;
+    const isHttp = b.dataset.kind==='http';
+    const msg = isHttp
+      ? '删除导入号「'+(b.dataset.name||'')+'」？账号密码会从本机移除，需要重新粘贴才能加回。'
+      : '删除账号「'+(b.dataset.name||'')+'」？它的浏览器会一起关掉。登录信息还留在电脑上，以后加回来不用重登。';
+    if(!confirm(msg)) return;
     act({do:'account_rm',account:b.dataset.rm},b,'删除中…','已删除');
   });
+  const _as=$('#accSearch'); if(_as){ _as.value=S.accSearch||''; _as.oninput=()=>{ S.accSearch=_as.value; renderAccounts(S.accounts); }; }
+  // 浏览器图标：点一下打开/收起浏览器
+  $$('#accs .brIco').forEach(function(b){ b.onclick=function(){ var id=b.dataset.br; var a=(S.accounts||[]).filter(function(x){return x.id===id})[0]||{}; var shown=((a.login_phase||{}).phase==='shown'); act({do:shown?'browser_hide':'browser_show',account:id}, b, '处理中…', shown?'已收起浏览器':'已打开浏览器'); }; });
+  // 右上「⋯」菜单：所有操作都在这
+  $$('#accs [data-menu]').forEach(function(b){ b.onclick=function(e){ var id=b.dataset.menu; var a=(S.accounts||[]).filter(function(x){return x.id===id})[0]||{}; var isHttp=String(id).indexOf('http:')===0; var it=[];
+    if(isHttp){
+      if(a.login==='required' || a.last_error){ it.push({t:'重新登录（自动，用已存密码）',fn:function(){ post({do:'http_quota_refresh',account:id}).then(function(r){ if(r.ok) watchQuotaProbe(); else toast(r.why||'失败'); }); }}); }
+      it.push({t:'检测 / 刷新（读额度）',fn:function(){ post({do:'http_quota_refresh',account:id}).then(function(r){ if(r.ok) watchQuotaProbe(); else toast(r.why||'失败'); }); }});
+    } else {
+      it.push({t:(a.login==='ok'?'重新登录':'登录'),fn:function(){ act({do:'login',account:id},null,'正在打开…','登录窗口已弹出'); }});
+      if(!a.email) it.push({t:'补邮箱',fn:function(){ act({do:'backfill_email',account:id},null,'正在补…','邮箱已补上'); }});
+      if(a.browser_running) it.push({t:'关掉浏览器（彻底结束）',fn:function(){ if(confirm('关掉「'+(a.name||'')+'」的浏览器？下次出图会自动重开，登录信息不丢。')) act({do:'browser_down',account:id},null,'正在关…','浏览器已关掉'); }});
+    }
+    it.push({t:(a.enabled===false?'启用':'停用'),fn:function(){ post({do:'account_enabled_set',account:id,on:(a.enabled===false)}).then(function(){ loadOverview(); }); }});
+    it.push({t:'改备注',fn:function(){ var v=prompt('新的备注名', a.name||''); if(v){ post({do:'account_rename',account:id,name:v}).then(function(r){ if(r.ok){ toast('已改名'); loadOverview(); } else toast(r.why||'没改成'); }); } }});
+    it.push({t:'删除',danger:true,fn:function(){ var msg=isHttp?'删除导入号「'+(a.name||'')+'」？账号密码会从本机移除，需重新粘贴才能加回。':'删除账号「'+(a.name||'')+'」？它的浏览器会一起关掉，登录信息还留着。'; if(confirm(msg)) act({do:'account_rm',account:id},null,'删除中…','已删除'); }});
+    openAccMenu(e,it);
+  }; });
 }
 async function addAccount(browser){
   if($('#accNew').classList.contains('off')) return;
@@ -1783,6 +2105,7 @@ async function act(body,btn,busyText,doneText){
 
 // ── 产量：堆叠柱（按账号分色）+ 成败条 + 标签条
 async function loadYield(){
+  if(!$('#ynums')) return;  // 任务页已移除重复的产量块，产量/统计统一在「统计」页
   // 图和文本各看各的：混在一起算"每张耗时"没有意义（文本一条几十秒、图一两分钟）
   const ask=S.kind==='ask';
   const unit=ask?'条':'张';
@@ -1984,8 +2307,8 @@ $('#bChatDel').onclick=async()=>{
 // 用户要的是"点一下 → 转圈 → 必须回报结果"，不是弹个 toast 说"已装好"。
 // 而且失败要能自证（自动传日志），不然他不知道是软件坏了还是没装成。
 const AI_NAME={claude:'Claude Code',codex:'Codex',workbuddy:'WorkBuddy',
-                opencode:'opencode',gemini:'Gemini CLI',dsh:'DeepSeek Harness',
-                hermes:'Hermes'};
+                opencode:'opencode',gemini:'Antigravity (Gemini)',dsh:'DeepSeek Harness',
+                qwen:'Qwen Code',windsurf:'Windsurf',agents:'通用 Agent 技能库',hermes:'Hermes'};
 let aiBusy=false;
 
 function aiRow(ok,name,detail){
@@ -2079,6 +2402,7 @@ function renderSettings(){
   paintAutostart();
   paintWatchdog();
   paintAutoUpdate();
+  paintHttpImport();
 }
 
 // 开机自启：以前装完默认就开，面板里却没有任何地方能关。2026-11-06 的反馈
@@ -2279,7 +2603,7 @@ $('#sQuit').onclick=async()=>{
 function syncTabs(){
   const sum=S.summary||{};
   const c=$('#pgChats');
-  $('#yWrap').hidden = !(sum.jobs>0);
+  var _yw=$('#yWrap'); if(_yw) _yw.hidden = !(sum.jobs>0);
   if(c) c.hidden = !((S.accounts||[]).some(a=>a.login==='ok'));
   const n=$('#aNotice');
   const accs=S.accounts||[];
@@ -2301,7 +2625,7 @@ $('#aNoticeGo').onclick=()=>go('accs');
 function renderStart(){
   const accs=S.accounts||[];
   const d1=accs.some(a=>a.login==='ok');
-  const d3=((S.summary||{}).images_ever||0)>0 || store.get('bp_copied')==='1';  // 出过图 或 复制过话术 就算会用了
+  const d3=((S.summary||{}).images_ever||0)>0 || store.get('bp_copied')==='1' || !!(S.global && Object.keys(S.global).length);
   const el1=$('#st1'), el3=$('#st3');
   if(el1) el1.classList.toggle('done',d1);
   if(el3) el3.classList.toggle('done',d3);
@@ -2320,19 +2644,31 @@ function renderStart(){
   const tab=$('#tabStart'); if(tab) tab.hidden = store.get('bp_onboarded')==='1' && S.tab!=='start';
 }
 
-// 引导页「这些真的都可以」图标行（2026-11-12）：官方 logo 用内联 SVG，缺失时退字母块。
+// 引导页「这些真的都可以」图标行：能拿到官方 mark 的用内联 SVG，其余用品牌色字母块
+const _AI_LOGOS={
+  openai:'M22.2819 9.8211a5.9847 5.9847 0 0 0-.5157-4.9108 6.0462 6.0462 0 0 0-6.5098-2.9A6.0651 6.0651 0 0 0 4.9807 4.1818a5.9847 5.9847 0 0 0-3.9977 2.9 6.0462 6.0462 0 0 0 .7427 7.0966 5.98 5.98 0 0 0 .511 4.9107 6.051 6.051 0 0 0 6.5146 2.9001A5.9847 5.9847 0 0 0 13.2599 24a6.0557 6.0557 0 0 0 5.7718-4.2058 5.9894 5.9894 0 0 0 3.9977-2.9001 6.0557 6.0557 0 0 0-.7475-7.0729zm-9.022 12.6081a4.4755 4.4755 0 0 1-2.8764-1.0408l.1419-.0804 4.7783-2.7582a.7948.7948 0 0 0 .3927-.6813v-6.7369l2.02 1.1686a.071.071 0 0 1 .038.052v5.5826a4.504 4.504 0 0 1-4.4945 4.4944zm-9.6607-4.1254a4.4708 4.4708 0 0 1-.5346-3.0137l.142.0852 4.783 2.7582a.7712.7712 0 0 0 .7806 0l5.8428-3.3685v2.3324a.0804.0804 0 0 1-.0332.0615L9.74 19.9502a4.4992 4.4992 0 0 1-6.1408-1.6464zM2.3408 7.8956a4.485 4.485 0 0 1 2.3655-1.9728V11.6a.7664.7664 0 0 0 .3879.6765l5.8144 3.3543-2.0201 1.1685a.0757.0757 0 0 1-.071 0l-4.8303-2.7865A4.504 4.504 0 0 1 2.3408 7.872zm16.5963 3.8558L13.1038 8.364 15.1192 7.2a.0757.0757 0 0 1 .071 0l4.8303 2.7913a4.4944 4.4944 0 0 1-.6765 8.1042v-5.6772a.79.79 0 0 0-.407-.667zm2.0107-3.0231l-.142-.0852-4.7735-2.7818a.7759.7759 0 0 0-.7854 0L9.409 9.2297V6.8974a.0662.0662 0 0 1 .0284-.0615l4.8303-2.7866a4.4992 4.4992 0 0 1 6.6802 4.66zM8.3065 12.863l-2.02-1.1638a.0804.0804 0 0 1-.038-.0567V6.0742a4.4992 4.4992 0 0 1 7.3757-3.4537l-.142.0805L8.704 5.459a.7948.7948 0 0 0-.3927.6813zm1.0976-2.3654l2.602-1.4998 2.6069 1.4998v2.9994l-2.5974 1.4997-2.6067-1.4997Z',
+  anthropic:'M17.3041 3.541h-3.6718l6.696 16.918H24Zm-10.6082 0L0 20.459h3.7442l1.3693-3.5527h7.0052l1.3693 3.5528h3.7442L10.5363 3.5409Zm-.3712 10.2232 2.2914-5.9456 2.2914 5.9456Z',
+  gemini:'M11.04 19.32Q12 21.51 12 24q0-2.49.93-4.68.96-2.19 2.58-3.81t3.81-2.55Q21.51 12 24 12q-2.49 0-4.68-.93a12.3 12.3 0 0 1-3.81-2.58 12.3 12.3 0 0 1-2.58-3.81Q12 2.49 12 0q0 2.49-.96 4.68-.93 2.19-2.55 3.81a12.3 12.3 0 0 1-3.81 2.58Q2.49 12 0 12q2.49 0 4.68.96 2.19.93 3.81 2.55t2.55 3.81',
+  deepseek:'M23.748 4.651c-.254-.124-.364.113-.512.233-.051.04-.094.09-.137.137-.372.397-.806.657-1.373.626-.829-.046-1.537.214-2.163.848-.133-.782-.575-1.248-1.247-1.548-.352-.155-.708-.311-.955-.65-.172-.24-.219-.509-.305-.774-.055-.16-.11-.323-.293-.35-.2-.031-.278.136-.356.276-.313.572-.434 1.202-.422 1.84.027 1.436.633 2.58 1.838 3.393.137.094.172.187.129.323-.082.28-.18.553-.266.833-.055.179-.137.218-.328.14a5.5 5.5 0 0 1-1.737-1.179c-.857-.828-1.631-1.743-2.597-2.46a12 12 0 0 0-.689-.47c-.985-.957.13-1.743.387-1.836.27-.098.094-.433-.778-.428-.872.003-1.67.295-2.687.685a3 3 0 0 1-.465.136 9.6 9.6 0 0 0-2.883-.101c-1.885.21-3.39 1.1-4.497 2.622C.082 8.776-.231 10.854.152 13.02c.403 2.284 1.568 4.175 3.36 5.653 1.857 1.533 3.997 2.284 6.438 2.14 1.482-.085 3.132-.284 4.994-1.86.47.234.962.328 1.78.398.629.058 1.235-.031 1.705-.129.735-.155.684-.836.418-.961-2.155-1.004-1.682-.595-2.112-.926 1.095-1.295 2.768-3.598 3.284-6.733.05-.346.115-.834.108-1.114-.004-.171.035-.238.23-.257a4.2 4.2 0 0 0 1.545-.475c1.397-.763 1.96-2.016 2.093-3.517.02-.23-.004-.467-.247-.588M11.58 18.168c-2.088-1.642-3.101-2.183-3.52-2.16-.39.024-.32.472-.234.763.09.288.207.487.371.74.114.167.192.416-.113.603-.673.416-1.842-.14-1.897-.168-1.361-.801-2.5-1.86-3.301-3.306-.775-1.393-1.225-2.888-1.299-4.482-.02-.385.094-.522.477-.592a4.7 4.7 0 0 1 1.53-.038c2.131.311 3.946 1.264 5.467 2.774.868.86 1.525 1.887 2.202 2.89.72 1.066 1.494 2.082 2.48 2.915.348.291.626.513.892.677-.802.09-2.14.109-3.055-.615zm1.001-6.44a.306.306 0 0 1 .415-.287.3.3 0 0 1 .113.074.3.3 0 0 1 .086.214c0 .17-.136.307-.308.307a.303.303 0 0 1-.306-.307m3.11 1.596c-.2.081-.4.151-.591.16a1.25 1.25 0 0 1-.798-.254c-.274-.23-.47-.358-.551-.758a1.7 1.7 0 0 1 .015-.588c.07-.327-.007-.537-.238-.727-.188-.156-.426-.199-.689-.199a.6.6 0 0 1-.254-.078.253.253 0 0 1-.114-.358 1 1 0 0 1 .192-.21c.356-.202.767-.136 1.146.016.352.144.618.408 1.001.782.392.451.462.576.685.915.176.264.336.536.446.848.066.194-.02.353-.25.45'
+};
 const _SUPPORTED_AI=[
-  {name:'Codex',   color:'#10A37F', letter:'C'},
-  {name:'Claude',  color:'#D97757', letter:'A'},
-  {name:'WorkBuddy',color:'#4B6BFB',letter:'W'},
-  {name:'DeepSeek',color:'#4D6BFE', letter:'D'},
-  {name:'Gemini',  color:'#8A6AD6', letter:'G'},
-  {name:'Hermes',  color:'#2A2A2A', letter:'H'},
+  {name:'Codex', bg:'#10A37F', logo:'openai'},
+  {name:'Claude Code', bg:'#D97757', logo:'anthropic'},
+  {name:'WorkBuddy', bg:'#4B6BFB', letter:'W'},
+  {name:'DeepSeek Harness', bg:'#4D6BFE', logo:'deepseek'},
+  {name:'Antigravity', bg:'#4285F4', logo:'gemini'},
+  {name:'opencode', bg:'#2A2A2A', letter:'o'},
+  {name:'Qwen Code', bg:'#615CED', letter:'Q'},
+  {name:'Windsurf', bg:'#09B6A2', letter:'W'},
+  {name:'Hermes', bg:'#2A2A2A', letter:'H'},
 ];
 function renderSupports(){
   const row=$('#supportsRow'); if(!row) return;
   row.innerHTML=_SUPPORTED_AI.map(function(a){
-    return '<span class="sai"><span class="ic" style="background:'+a.color+'">'+a.letter+'</span>'+esc(a.name)+'</span>';
+    var inner=(a.logo&&_AI_LOGOS[a.logo])
+      ? '<svg viewBox="0 0 24 24" width="15" height="15" aria-hidden="true" style="fill:#fff"><path d="'+_AI_LOGOS[a.logo]+'"/></svg>'
+      : '<b style="font-size:12px;color:#fff;font-weight:700">'+esc(a.letter||a.name.charAt(0))+'</b>';
+    return '<span class="sai"><span class="ic" style="background:'+a.bg+'">'+inner+'</span>'+esc(a.name)+'</span>';
   }).join('');
 }
 
@@ -2353,6 +2689,128 @@ $('#st1go').onclick=()=>go('accs');
 if($('#st3go')) $('#st3go').onclick=()=>go('jobs');
 $('#stDoneGo').onclick=()=>{ go('jobs'); $('#tabStart').hidden=true; };
 $('#sGuide').onclick=()=>go('start');
+var ERR_CN={RENDER_FAILED:'出图失败',GENERATE_FAILED:'生成失败',PASTE_FAILED:'粘贴失败',NO_REF_FILE:'缺参考图',QUOTA_COOLDOWN:'额度冷却',TIMEOUT_UNCERTAIN:'超时·不确定',TIMEOUT:'超时',ASK_TIMEOUT:'问答超时',AUTH_REQUIRED:'登录失效',NO_LANE:'无可用号',BUSY:'账号忙',SKIPPED:'跳过',ASK_EMPTY:'问答空回复',ASK_FAILED:'问答失败',EMPTY_REPLY:'空回复',CANCELLED:'已取消',CONTENT_POLICY:'内容违规',content_policy_violation:'内容违规',invalid_image:'图片无效',invalid_request:'请求无效',model_not_found:'模型不存在',no_image_generated:'未生成图片',stream_timeout:'流超时',unauthorized:'未授权',upstream_error:'上游错误',upstream_text_reply:'上游文字回复',dependencies_missing:'依赖缺失',arkose_required:'需人机验证',EXIT_INTERNAL:'内部错误',EXIT_ACTION:'操作失败',UPLOAD_FAILED:'上传失败',DOWNLOAD_FAILED:'下载失败',NETWORK:'网络错误',NETWORK_ERROR:'网络错误',BROWSER_LOST:'浏览器丢失',SURVEY_BLOCKED:'问卷拦截',ASK_SEND:'提问失败',UNKNOWN:'未知'};
+function errName(c){ return ERR_CN[c]||c; }
+function niceTop(mx){ var s=(mx||0)/4; if(s<=0) return 4; var mag=Math.pow(10,Math.floor(Math.log10(s))); var n=s/mag; var ns=(n<=1?1:n<=2?2:n<=5?5:10)*mag; return ns*4; }
+async function renderStats(){
+  const accs=S.accounts||[], hs=S.httpSummary||{};
+  const browserOk=accs.filter(function(a){return a.kind!=='http'&&a.login==='ok'&&a.enabled!==false}).length;
+  const total=accs.length, canGen=browserOk+(hs.valid||0), limited=hs.limited||0, remain=hs.remaining||0;
+  const invalid=Math.max(0, total-canGen-limited);
+  let st={}; try{ st=await j('/api/stats?days=14&kind=image'); }catch(e){ st={}; }
+  const series=st.series||[], today=st.today||0, d7=st.d7||0, d14=st.total||0, med=st.median_sec_per_image;
+  const oc=st.outcomes||{}; let fail=0; Object.keys(oc).forEach(function(k){ if(k!=='ok') fail+=oc[k]; });
+  const okN=oc.ok||0, calls=okN+fail, rate=calls?Math.round(okN*100/calls):null;
+  function tile(v,t,sub){ return '<div><b>'+v+'</b><span>'+t+'</span>'+(sub?'<span style="display:block;font-size:11px;color:var(--faint);margin-top:2px">'+sub+'</span>':'')+'</div>'; }
+  const k1=$('#kpiTop'); if(k1){ k1.style.gridTemplateColumns='repeat(5,1fr)'; k1.innerHTML=tile(total,'总账号','浏览器+导入')+tile(canGen,'可出图','')+tile(limited,'限流中','')+tile(invalid,'不可用/停用','登录失效等')+tile(remain,'剩余额度','导入号合计'); }
+  const k2=$('#kpiSub'); if(k2){ k2.style.gridTemplateColumns='repeat(5,1fr)'; k2.innerHTML=tile(today,'今日出图','张')+tile(d7,'近7天','张')+tile(d14,'近14天','张')+tile(rate==null?'–':(rate+'%'),'成功率','成功/总调用')+tile(med==null?'–':(med+'s'),'每张中位耗时',''); }
+  (function(){ var el=$('#chartTrend'); if(!el)return;
+    var max=Math.max(1,...series.map(function(p){return p.n})); var top=niceTop(max);
+    var W=760,H=190,L=40,B=26,T=12,bw=(W-L-8)/Math.max(1,series.length),g='';
+    for(var gi=0;gi<=4;gi++){ var gy=T+(H-T-B)*gi/4; var gv=Math.round(top*(4-gi)/4); g+='<line class="gl" x1="'+L+'" y1="'+gy+'" x2="'+W+'" y2="'+gy+'"></line><text class="ax" x="'+(L-8)+'" y="'+(gy+4)+'" text-anchor="end">'+gv+'</text>'; }
+    series.forEach(function(p,i){ var h=Math.max(0,Math.round(p.n/top*(H-T-B))); var x=L+i*bw+bw*0.18,w=bw*0.64,y=(H-B)-h;
+      if(p.n>0) g+='<rect x="'+x.toFixed(1)+'" y="'+y+'" width="'+w.toFixed(1)+'" height="'+h+'" fill="var(--lan)"></rect>';
+      g+='<text class="ax" x="'+(x+w/2).toFixed(1)+'" y="'+(H-8)+'" text-anchor="middle">'+p.date.slice(5)+'</text>'; });
+    el.innerHTML='<div class="legend"><span><i style="background:var(--lan)"></i>每天出图张数</span><span style="color:var(--faint)">近 14 天 · 共 '+series.reduce(function(s,p){return s+p.n},0)+' 张</span></div><svg viewBox="0 0 '+W+' '+H+'" preserveAspectRatio="none">'+g+'</svg>';
+  })();
+  (function(){ var el=$('#chartTop'); if(!el)return; var ba=st.by_account||{},rows=[];
+    Object.keys(ba).forEach(function(k){ var arr=ba[k]||[]; rows.push({name:(S.accName&&S.accName[k])||k,tot:arr.reduce(function(a,b){return a+b},0),color:(S.accColor&&S.accColor[k])||'var(--lan)'}); });
+    rows.sort(function(a,b){return b.tot-a.tot}); var top=rows.slice(0,10), mx=Math.max(1,...top.map(function(r){return r.tot}));
+    var h='<div class="legend">按账号出图 · Top 10（近14天）</div>';
+    if(!top.length){ h+='<div class="empty">还没有出图记录</div>'; }
+    else { h+='<div class="hbars">'; top.forEach(function(r){ h+='<div class="hb"><span class="lab" title="'+esc(r.name)+'">'+esc(r.name)+'</span><span class="trk"><i style="width:'+Math.round(r.tot*100/mx)+'%;background:'+r.color+'"></i></span><span class="v">'+r.tot+'</span></div>'; }); h+='</div>'; }
+    el.innerHTML=h;
+  })();
+  (function(){ var el=$('#chartRate'); if(!el)return; var r=52,c=2*Math.PI*r,len=(calls?okN/calls:0)*c;
+    var h='<div class="legend">成功率</div><div style="display:flex;gap:18px;align-items:center;flex-wrap:wrap">'
+      +'<svg viewBox="0 0 130 130" style="width:118px;height:118px;flex:none"><circle cx="65" cy="65" r="'+r+'" fill="none" stroke="var(--line2)" stroke-width="14"></circle>'
+      +'<circle cx="65" cy="65" r="'+r+'" fill="none" stroke="var(--qing)" stroke-width="14" stroke-dasharray="'+len.toFixed(1)+' '+c.toFixed(1)+'" transform="rotate(-90 65 65)"></circle>'
+      +'<text x="65" y="62" text-anchor="middle" style="font:600 20px var(--mono);fill:var(--ink)">'+(rate==null?'–':rate+'%')+'</text>'
+      +'<text x="65" y="80" text-anchor="middle" class="ax">成功率</text></svg>'
+      +'<div style="flex:1;min-width:150px"><div style="font-size:12.5px;color:var(--dim);margin-bottom:8px">成功 <b style="font-family:var(--mono);color:var(--qing)">'+okN+'</b> · 失败 <b style="font-family:var(--mono);color:var(--zhu)">'+fail+'</b></div>';
+    var fails=Object.keys(oc).filter(function(k){return k!=='ok'}).map(function(k){return {k:k,n:oc[k]}}).sort(function(a,b){return b.n-a.n}).slice(0,5);
+    if(fails.length){ var fmx=Math.max(1,...fails.map(function(f){return f.n})); h+='<div class="hbars">'; fails.forEach(function(f){ h+='<div class="hb" style="grid-template-columns:96px 1fr 34px"><span class="lab" title="'+esc(f.k)+'">'+esc(errName(f.k))+'</span><span class="trk"><i style="width:'+Math.round(f.n*100/fmx)+'%;background:var(--zhu)"></i></span><span class="v">'+f.n+'</span></div>'; }); h+='</div>'; }
+    h+='</div></div>'; el.innerHTML=h;
+  })();
+  (function(){ var el=$('#chartQuota'); if(!el)return;
+    var http=accs.filter(function(a){return a.kind==='http'&&a.enabled!==false});
+    var sumH=http.reduce(function(s,a){return s+(a.image_quota||0)},0);
+    var bks=[{l:'0',min:0,max:0,n:0},{l:'1–4',min:1,max:4,n:0},{l:'5–9',min:5,max:9,n:0},{l:'10–24',min:10,max:24,n:0},{l:'25+',min:25,max:99999,n:0}];
+    http.forEach(function(a){ var rr=a.image_quota||0; for(var i=0;i<bks.length;i++){ if(rr>=bks[i].min&&rr<=bks[i].max){ bks[i].n++; break; } } });
+    var mx=Math.max(1,...bks.map(function(b){return b.n})); var W=760,H=160,L=30,B=28,T=14,bw=(W-L)/bks.length,g='';
+    bks.forEach(function(b,i){ var h2=Math.round(b.n/mx*(H-T-B)); var x=L+i*bw+bw*0.22,w=bw*0.56,y=(H-B)-h2;
+      g+='<rect x="'+x.toFixed(1)+'" y="'+y+'" width="'+w.toFixed(1)+'" height="'+h2+'" fill="'+(i===0?'var(--zhu)':'var(--qing)')+'"></rect>';
+      g+='<text class="ax" x="'+(x+w/2).toFixed(1)+'" y="'+(y-5)+'" text-anchor="middle">'+b.n+'</text>';
+      g+='<text class="ax" x="'+(x+w/2).toFixed(1)+'" y="'+(H-9)+'" text-anchor="middle">剩 '+b.l+'</text>'; });
+    el.innerHTML='<div class="chart-t">额度分布（按剩余档位 · 导入号池：'+http.length+' 个号）　剩余合计 <b class="mono">'+sumH+'</b> 张</div><svg viewBox="0 0 '+W+' '+H+'" preserveAspectRatio="none">'+g+'</svg>';
+  })();
+  var rb=$('#bStatsRefresh'); if(rb){ rb.hidden=!S.httpEnabled; rb.textContent='刷新额度'; rb.onclick=async function(){ if(rb.disabled) return; rb.disabled=true; try{ var r=await post({do:'http_quota_refresh'}); if(!r.ok){ toast(r.why||'失败'); rb.disabled=false; return; } watchQuotaProbe('#bStatsRefresh'); }catch(e){ toast(e.message); rb.disabled=false; } }; }
+}
+// 便于截图/直达：?tab=jobs|accs|stats|set 直接打开对应页（延后执行，压过初始化默认页）
+setTimeout(function(){ try{ var m=location.search.match(/[?&]tab=(\w+)/); if(m&&window.go) go(m[1]); }catch(e){} }, 400);
+function tile(v,label,unit){ return '<div class="kpi"><span class="kl">'+label+'</span><div class="kv">'+v+(unit?'<i>'+unit+'</i>':'')+'</div></div>'; }
+async function renderStats(){
+  var accs=S.accounts||[], hs=S.httpSummary||{}, days=S.statsDays||14;
+  var browserOk=accs.filter(function(a){return a.kind!=='http'&&a.login==='ok'&&a.enabled!==false}).length;
+  var total=accs.length, canGen=browserOk+(hs.valid||0), limited=hs.limited||0, remain=hs.remaining||0;
+  var invalid=Math.max(0,total-canGen-limited);
+  var st={}; try{ st=await j('/api/stats?days='+days+'&kind=image'); }catch(e){ st={}; }
+  var series=st.series||[], today=st.today||0, d7=st.d7||0, d14=st.total||0, med=st.median_sec_per_image;
+  var oc=st.outcomes||{}, fail=0; Object.keys(oc).forEach(function(k){ if(k!=='ok') fail+=oc[k]; });
+  var okN=oc.ok||0, calls=okN+fail, rate=calls?Math.round(okN*100/calls):null;
+  var k1=$('#kpiTop'); if(k1){ k1.style.gridTemplateColumns='repeat(5,1fr)'; k1.innerHTML=tile(remain,'剩余额度','张')+tile(canGen,'可出图','个')+tile(limited,'限流中','个')+tile(invalid,'不可用/停用','个')+tile(total,'总账号','个'); }
+  var k2=$('#kpiSub'); if(k2){ k2.style.gridTemplateColumns='repeat(5,1fr)'; k2.innerHTML=tile(today,'今日出图','张')+tile(d7,'近 7 天出图','张')+tile(d14,'近 14 天出图','张')+tile(rate==null?'–':rate,'成功率',rate==null?'':'%')+tile(med==null?'–':med,'每张中位耗时',med==null?'':'秒'); }
+  (function(){ var el=$('#chartTrend'); if(!el)return;
+    var top=niceTop(Math.max(1,...series.map(function(p){return p.n}))); var W=760,H=190,L=40,B=26,T=12,bw=(W-L-8)/Math.max(1,series.length),g='';
+    for(var gi=0;gi<=4;gi++){ var gy=T+(H-T-B)*gi/4, gv=Math.round(top*(4-gi)/4); g+='<line class="gl" x1="'+L+'" y1="'+gy+'" x2="'+W+'" y2="'+gy+'"></line><text class="ax" x="'+(L-8)+'" y="'+(gy+4)+'" text-anchor="end">'+gv+'</text>'; }
+    var step=Math.ceil(series.length/8);
+    series.forEach(function(p,i){ var h=Math.max(0,Math.round(p.n/top*(H-T-B))), x=L+i*bw+bw*0.18,w=bw*0.64,y=(H-B)-h;
+      if(p.n>0) g+='<rect x="'+x.toFixed(1)+'" y="'+y+'" width="'+w.toFixed(1)+'" height="'+h+'" fill="var(--lan)"></rect>';
+      if(i%step===0||i===series.length-1) g+='<text class="ax" x="'+(x+w/2).toFixed(1)+'" y="'+(H-8)+'" text-anchor="middle">'+p.date.slice(5)+'</text>'; });
+    var tot=series.reduce(function(s,p){return s+p.n},0);
+    el.innerHTML='<div class="legend"><span><i style="background:var(--lan)"></i>每天出图张数</span><span style="color:var(--faint)">近 '+days+' 天 · 共 '+tot+' 张</span></div><svg viewBox="0 0 '+W+' '+H+'" preserveAspectRatio="none">'+g+'</svg>';
+  })();
+  (function(){ var el=$('#chartTop'); if(!el)return; var ba=st.by_account||{},rows=[];
+    Object.keys(ba).forEach(function(k){ var arr=ba[k]||[]; rows.push({name:(S.accName&&S.accName[k])||k,tot:arr.reduce(function(a,b){return a+b},0),color:(S.accColor&&S.accColor[k])||'var(--lan)'}); });
+    rows=rows.filter(function(r){return r.tot>0}); rows.sort(function(a,b){return b.tot-a.tot}); var top=rows.slice(0,10), mx=Math.max(1,...top.map(function(r){return r.tot}));
+    var h='<div class="legend">账号出图排行 · 前 10（近 '+days+' 天）</div>';
+    if(!top.length){ h+='<div class="empty">这个区间还没有出图记录。</div>'; }
+    else { h+='<div class="hbars">'; top.forEach(function(r){ h+='<div class="hb"><span class="lab" title="'+esc(r.name)+'">'+esc(r.name)+'</span><span class="trk"><i style="width:'+Math.round(r.tot*100/mx)+'%;background:'+r.color+'"></i></span><span class="v">'+r.tot+'</span></div>'; }); h+='</div>'; }
+    el.innerHTML=h;
+  })();
+  (function(){ var el=$('#chartRate'); if(!el)return; var r=52,c=2*Math.PI*r,len=(calls?okN/calls:0)*c;
+    var donut='<svg viewBox="0 0 130 130" style="width:120px;height:120px"><circle cx="65" cy="65" r="'+r+'" fill="none" stroke="var(--line2)" stroke-width="14"></circle><circle cx="65" cy="65" r="'+r+'" fill="none" stroke="var(--qing)" stroke-width="14" stroke-dasharray="'+len.toFixed(1)+' '+c.toFixed(1)+'" transform="rotate(-90 65 65)"></circle><text x="65" y="62" text-anchor="middle" style="font:600 20px var(--mono);fill:var(--ink)">'+(rate==null?'–':rate+'%')+'</text><text x="65" y="80" text-anchor="middle" class="ax">成功率</text></svg>';
+    var h='<div class="legend">成功率</div><div style="display:flex;justify-content:center;margin:2px 0 8px">'+donut+'</div>'
+      +'<div style="display:flex;justify-content:center;gap:22px;font-size:13px;color:var(--dim);margin-bottom:14px"><span>成功 <b style="font-family:var(--mono);color:var(--qing);font-size:15px">'+okN+'</b></span><span>失败 <b style="font-family:var(--mono);color:var(--zhu);font-size:15px">'+fail+'</b></span></div>';
+    var fails=Object.keys(oc).filter(function(k){return k!=='ok'}).map(function(k){return {k:k,n:oc[k]}}).sort(function(a,b){return b.n-a.n}).slice(0,6);
+    if(fails.length){ var fmx=Math.max(1,...fails.map(function(f){return f.n})); h+='<div class="hbars">'; fails.forEach(function(f){ h+='<div class="hb"><span class="lab" title="'+esc(f.k)+'">'+esc(errName(f.k))+'</span><span class="trk"><i style="width:'+Math.round(f.n*100/fmx)+'%;background:var(--zhu)"></i></span><span class="v">'+f.n+'</span></div>'; }); h+='</div>'; }
+    el.innerHTML=h;
+  })();
+  (function(){ var el=$('#chartQuota'); if(!el)return; var http=accs.filter(function(a){return a.kind==='http'&&a.enabled!==false}); var sumH=http.reduce(function(s,a){return s+(a.image_quota||0)},0);
+    var bks=[{l:'0',min:0,max:0,n:0},{l:'1–4',min:1,max:4,n:0},{l:'5–9',min:5,max:9,n:0},{l:'10–24',min:10,max:24,n:0},{l:'25+',min:25,max:99999,n:0}];
+    http.forEach(function(a){ var rr=a.image_quota||0; for(var i=0;i<bks.length;i++){ if(rr>=bks[i].min&&rr<=bks[i].max){ bks[i].n++; break; } } });
+    var mx=Math.max(1,...bks.map(function(b){return b.n})), W=760,H=160,L=30,B=28,T=14,bw=(W-L)/bks.length,g='';
+    bks.forEach(function(b,i){ var h2=Math.round(b.n/mx*(H-T-B)), x=L+i*bw+bw*0.22,w=bw*0.56,y=(H-B)-h2; g+='<rect x="'+x.toFixed(1)+'" y="'+y+'" width="'+w.toFixed(1)+'" height="'+h2+'" fill="'+(i===0?'var(--zhu)':'var(--qing)')+'"></rect><text class="ax" x="'+(x+w/2).toFixed(1)+'" y="'+(y-5)+'" text-anchor="middle">'+b.n+'</text><text class="ax" x="'+(x+w/2).toFixed(1)+'" y="'+(H-9)+'" text-anchor="middle">剩 '+b.l+'</text>'; });
+    el.innerHTML='<div class="chart-t">额度分布（按剩余档位 · 导入号池：'+http.length+' 个号）　剩余合计 <b class="mono">'+sumH+'</b> 张</div><svg viewBox="0 0 '+W+' '+H+'" preserveAspectRatio="none">'+g+'</svg>';
+  })();
+  $$('#statsRange button').forEach(function(b){ b.classList.toggle('on', (+b.dataset.d)===days); b.onclick=function(){ S.statsDays=+b.dataset.d; renderStats(); }; });
+  var rb=$('#bStatsRefresh'); if(rb){ rb.hidden=!S.httpEnabled; rb.textContent='刷新额度'; rb.onclick=async function(){ if(rb.disabled) return; rb.disabled=true; try{ var r=await post({do:'http_quota_refresh'}); if(!r.ok){ toast(r.why||'失败'); rb.disabled=false; return; } watchQuotaProbe('#bStatsRefresh'); }catch(e){ toast(e.message); rb.disabled=false; } }; }
+}
+// 图标行（用 /static/agent-icons/*.svg 真实品牌图标；覆盖旧实现）
+function renderSupports(){
+  const row=$('#supportsRow'); if(!row) return;
+  const L=[
+    ['Codex','openai.svg'],['Claude Code','anthropic.svg'],['WorkBuddy','workbuddy.png',1],
+    ['DeepSeek Harness','deepseek.svg'],['Antigravity','gemini.svg'],['opencode','opencode.svg'],
+    ['Qwen Code','qwen.svg'],['Windsurf','windsurf.svg'],['Hermes','hermes.svg']
+  ];
+  row.innerHTML=L.map(function(x){
+    var tile = x[2]
+      ? '<span class="ic" style="background:transparent;border:0"><img src="/static/agent-icons/'+x[1]+'" alt="" style="width:20px;height:20px;border-radius:5px;object-fit:contain"></span>'
+      : '<span class="ic" style="background:#fff;border:1px solid var(--line2)"><img src="/static/agent-icons/'+x[1]+'" alt="" style="width:15px;height:15px;object-fit:contain"></span>';
+    return '<span class="sai">'+tile+esc(x[0])+'</span>';
+  }).join('');
+}
 
 // ── 在线更新：启动时后台查一次；有新版就在「设置」上亮个点
 function paintUpdate(u){
@@ -2474,11 +2932,13 @@ function go(k){
   $$('.tab').forEach(x=>x.classList.toggle('on',x.dataset.tab===k));
   S.tab=k;
   $('#pgStart').hidden=k!=='start'; $('#pgJobs').hidden=k!=='jobs'; $('#pgAccs').hidden=k!=='accs';
+  $('#pgStats').hidden=k!=='stats';
   $('#pgSet').hidden=k!=='set';
   const _page=document.querySelector('.page');
-  if(_page) _page.classList.toggle('wide', k==='accs');
+  if(_page) _page.classList.toggle('wide', k==='accs'||k==='stats');
   $('main').scrollTop=0;
   if(k==='accs') loadOverview();
+  if(k==='stats') renderStats();
   if(k==='jobs' && (S.summary||{}).jobs) loadYield();
   if(k==='start'){ $('#tabStart').hidden=false; renderStart(); }
   if(k==='set') renderSettings();
@@ -2783,6 +3243,90 @@ $('#bSaveSel').onclick=async()=>{
   btn.disabled=false; updateSelBar();
   toast(failed.length ? `已保存 ${ok} 张，${failed.length} 张失败：${failed[0]}` : `已保存 ${ok} 张到半瓢文件夹`);
 };
+async function renderStatsV2(){
+  var accs=S.accounts||[], hs=S.httpSummary||{}, sel=(S.statsDays==null?14:S.statsDays);
+  var days=(sel==='all')?90:sel;
+  var browserOk=accs.filter(function(a){return a.kind!=='http'&&a.login==='ok'&&a.enabled!==false}).length;
+  var total=accs.length, canGen=browserOk+(hs.valid||0), limited=hs.limited||0, remain=hs.remaining||0;
+  var invalid=Math.max(0,total-canGen-limited);
+  var st={}; try{ st=await j('/api/stats?days='+days+'&kind=image'); }catch(e){ st={}; }
+  var series=st.series||[], med=st.median_sec_per_image, rngTotal=st.total||0;
+  var oc=st.outcomes||{}, fail=0; Object.keys(oc).forEach(function(k){ if(k!=='ok') fail+=oc[k]; });
+  var okN=oc.ok||0, calls=okN+fail, rate=calls?Math.round(okN*100/calls):null;
+  // ── 一、额度：剩余额度主角 + 账号状态构成条 ──
+  var qh=$('#quotaHero');
+  if(qh){ var segs=[{k:'可用',n:canGen,c:'var(--qing)'},{k:'限流',n:limited,c:'var(--huang)'},{k:'不可用',n:invalid,c:'var(--zhu)'}];
+    var tt=Math.max(1,canGen+limited+invalid);
+    var bar=segs.map(function(x){return '<i style="width:'+(x.n*100/tt)+'%;background:'+x.c+'"></i>';}).join('');
+    var leg=segs.map(function(x){return '<span style="display:inline-flex;align-items:center;gap:6px;margin-right:18px"><i style="width:10px;height:10px;display:inline-block;background:'+x.c+'"></i>'+x.k+' <b style="font-family:var(--mono)">'+x.n+'</b> 个</span>';}).join('');
+    qh.innerHTML='<div style="display:flex;align-items:flex-end;gap:26px;flex-wrap:wrap">'
+      +'<div><div style="font-size:12.5px;color:var(--dim);letter-spacing:.3px">全池剩余额度</div>'
+      +'<div style="font:600 44px/1.05 var(--mono);color:var(--qing);letter-spacing:-1px;margin-top:4px">'+remain+'<i style="font:12px var(--sans);color:var(--faint);font-style:normal;margin-left:6px">张</i></div>'
+      +'<div style="font-size:12px;color:var(--faint);margin-top:2px">≈ 全池还能出 '+remain+' 张图</div></div>'
+      +'<div style="flex:1;min-width:260px"><div style="font-size:12.5px;color:var(--dim);margin-bottom:7px">账号状态（共 '+total+' 个）</div>'
+      +'<div class="stack">'+bar+'</div><div style="margin-top:9px;font-size:12.5px;color:var(--ink2)">'+leg+'</div></div>'
+      +'</div>';
+  }
+  (function(){ var el=$('#chartQuota'); if(!el)return; var http=accs.filter(function(a){return a.kind==='http'&&a.enabled!==false}); var sumH=http.reduce(function(s,a){return s+(a.image_quota||0)},0);
+    var bks=[{l:'0',min:0,max:0,n:0},{l:'1–4',min:1,max:4,n:0},{l:'5–9',min:5,max:9,n:0},{l:'10–24',min:10,max:24,n:0},{l:'25+',min:25,max:99999,n:0}];
+    http.forEach(function(a){var r=a.image_quota||0;for(var i=0;i<bks.length;i++){if(r>=bks[i].min&&r<=bks[i].max){bks[i].n++;break;}}});
+    var mx=Math.max(1,...bks.map(function(b){return b.n})),W=760,H=150,L=30,B=28,T=14,bw=(W-L)/bks.length,g='';
+    bks.forEach(function(b,i){var h2=Math.round(b.n/mx*(H-T-B)),x=L+i*bw+bw*0.22,w=bw*0.56,y=(H-B)-h2;g+='<rect x="'+x.toFixed(1)+'" y="'+y+'" width="'+w.toFixed(1)+'" height="'+h2+'" fill="'+(i===0?'var(--zhu)':'var(--qing)')+'"></rect><text class="ax" x="'+(x+w/2).toFixed(1)+'" y="'+(y-5)+'" text-anchor="middle">'+b.n+' 个</text><text class="ax" x="'+(x+w/2).toFixed(1)+'" y="'+(H-9)+'" text-anchor="middle">剩 '+b.l+'</text>';});
+    el.innerHTML='<div class="chart-t">额度分布 · 各号还剩多少（'+http.length+' 个导入号，合计 '+sumH+' 张）</div><svg viewBox="0 0 '+W+' '+H+'" preserveAspectRatio="none">'+g+'</svg>';
+  })();
+  // ── 二、出图与账号 ──
+  var oh=$('#outHero');
+  if(oh){ var label=(sel==='all'?'历史累计出图':('近 '+sel+' 天出图')); var avgTxt=(sel==='all')?'':('　·　日均 '+Math.round(rngTotal/sel)+' 张');
+    oh.innerHTML='<div style="display:flex;align-items:flex-end;gap:22px;flex-wrap:wrap">'
+      +'<div><div style="font-size:12.5px;color:var(--dim)">'+label+'</div>'
+      +'<div style="font:600 40px/1.05 var(--mono);color:var(--ink);letter-spacing:-1px;margin-top:4px">'+rngTotal+'<i style="font:12px var(--sans);color:var(--faint);font-style:normal;margin-left:6px">张</i></div></div>'
+      +'<div style="font-size:13px;color:var(--ink2);padding-bottom:8px">成功率 <b style="font-family:var(--mono);color:var(--qing)">'+(rate==null?'–':rate+'%')+'</b>　·　每张中位 <b style="font-family:var(--mono)">'+(med==null?'–':med)+'</b> 秒'+avgTxt+'</div>'
+      +'</div>';
+  }
+  (function(){ var el=$('#chartTrend'); if(!el)return;
+    if(sel==='all'){ el.innerHTML='<div class="legend">每天出图张数（按账号分色）</div><div class="empty" style="padding:26px 0">历史累计不按天展示；切到 7/14/30 天可看每日趋势。</div>'; return; }
+    var by=st.by_account||{}, ids=Object.keys(by).filter(function(id){return (by[id]||[]).some(function(v){return v>0})});
+    ids.sort(function(a,b){return ((S.accounts||[]).findIndex(function(x){return x.id===a}))-((S.accounts||[]).findIndex(function(x){return x.id===b}))});
+    var colorOf=function(id){return (S.accColor&&S.accColor[id])||'var(--lan)'};
+    var W=760,H=230,L=40,B=28,T=16,n=series.length,bw=(W-L-8)/Math.max(1,n),g='';
+    var top=niceTop(Math.max(1,...series.map(function(p){return p.n})));
+    for(var gi=0;gi<=4;gi++){var gy=T+(H-T-B)*gi/4,gv=Math.round(top*(4-gi)/4);g+='<line class="gl" x1="'+L+'" y1="'+gy+'" x2="'+W+'" y2="'+gy+'"></line><text class="ax" x="'+(L-8)+'" y="'+(gy+4)+'" text-anchor="end">'+gv+'</text>';}
+    var step=Math.max(1,Math.ceil(n/8));
+    series.forEach(function(s,i){ var x=L+i*bw+bw*0.18,w=bw*0.64,acc=0;
+      var segs=ids.map(function(id){return {id:id,v:(by[id]||[])[i]||0}}).filter(function(o){return o.v});
+      segs.forEach(function(o,k){ var y0=(H-B)-(acc/top*(H-T-B)); acc+=o.v; var y1=(H-B)-(acc/top*(H-T-B)); var h=Math.max(1,y0-y1-(k===segs.length-1?0:1.5)); g+='<rect x="'+x.toFixed(1)+'" y="'+(y0-h).toFixed(1)+'" width="'+w.toFixed(1)+'" height="'+h.toFixed(1)+'" fill="'+colorOf(o.id)+'"></rect>'; });
+      if(s.n){ var ytop=(H-B)-(s.n/top*(H-T-B))-5; g+='<text class="ax" x="'+(x+w/2).toFixed(1)+'" y="'+ytop.toFixed(1)+'" text-anchor="middle" style="fill:var(--ink2)">'+s.n+'</text>'; }
+      if(i%step===0||i===n-1) g+='<text class="ax" x="'+(x+w/2).toFixed(1)+'" y="'+(H-8)+'" text-anchor="middle">'+s.date.slice(5)+'</text>'; });
+    var legend=ids.map(function(id){return '<span><i style="background:'+colorOf(id)+'"></i>'+esc((S.accName&&S.accName[id])||id)+'</span>';}).join('');
+    el.innerHTML='<div class="legend"><span style="color:var(--dim)">每天出图张数 · 按账号分色</span>'+legend+'</div><svg viewBox="0 0 '+W+' '+H+'" style="width:100%;height:auto">'+g+'</svg>';
+  })();
+  (function(){ var el=$('#chartTop'); if(!el)return; var ba=st.by_account||{},rows=[];
+    Object.keys(ba).forEach(function(k){var arr=ba[k]||[];var s=Array.isArray(arr)?arr.reduce(function(a,b){return a+b},0):(arr||0);rows.push({name:(S.accName&&S.accName[k])||k,tot:s,color:(S.accColor&&S.accColor[k])||'var(--lan)'});});
+    rows=rows.filter(function(r){return r.tot>0});rows.sort(function(a,b){return b.tot-a.tot});var top=rows.slice(0,10);
+    var title='<div class="legend">账号出图排行 · 前 10 名'+(sel==='all'?'':'（近 '+sel+' 天）')+'</div>';
+    if(!top.length){ el.innerHTML=title+'<div class="empty">这个区间还没有出图记录。</div>'; return; }
+    var W=600,H=250,L=34,B=80,T=22,n=top.length,bw=(W-L-6)/n;
+    var max=niceTop(Math.max(1,...top.map(function(r){return r.tot}))),g='';
+    for(var gi=0;gi<=4;gi++){var gy=T+(H-T-B)*gi/4,gv=Math.round(max*(4-gi)/4);g+='<line class="gl" x1="'+L+'" y1="'+gy+'" x2="'+W+'" y2="'+gy+'"></line><text class="ax" x="'+(L-6)+'" y="'+(gy+4)+'" text-anchor="end">'+gv+'</text>';}
+    top.forEach(function(r,i){ var h=Math.max(2,Math.round(r.tot/max*(H-T-B))), x=L+i*bw+bw*0.22,w=bw*0.56,y=(H-B)-h;
+      g+='<rect x="'+x.toFixed(1)+'" y="'+y+'" width="'+w.toFixed(1)+'" height="'+h+'" fill="'+r.color+'"></rect>';
+      g+='<text class="ax" x="'+(x+w/2).toFixed(1)+'" y="'+(y-5)+'" text-anchor="middle" style="fill:var(--ink2);font-family:var(--mono)">'+r.tot+'</text>';
+      var nm=r.name.length>9?r.name.slice(0,9)+'…':r.name;
+      g+='<text class="ax" x="'+(x+w/2).toFixed(1)+'" y="'+(H-B+13)+'" text-anchor="end" transform="rotate(-32 '+(x+w/2).toFixed(1)+' '+(H-B+13)+')">'+esc(nm)+'</text>';
+    });
+    el.innerHTML=title+'<svg viewBox="0 0 '+W+' '+H+'" style="width:100%;height:auto">'+g+'</svg>';
+  })();
+  (function(){ var el=$('#chartRate'); if(!el)return; var r=52,c=2*Math.PI*r,len=(calls?okN/calls:0)*c;
+    var donut='<svg viewBox="0 0 130 130" style="width:118px;height:118px"><circle cx="65" cy="65" r="'+r+'" fill="none" stroke="var(--line2)" stroke-width="14"></circle><circle cx="65" cy="65" r="'+r+'" fill="none" stroke="var(--qing)" stroke-width="14" stroke-dasharray="'+len.toFixed(1)+' '+c.toFixed(1)+'" transform="rotate(-90 65 65)"></circle><text x="65" y="62" text-anchor="middle" style="font:600 20px var(--mono);fill:var(--ink)">'+(rate==null?'–':rate+'%')+'</text><text x="65" y="80" text-anchor="middle" class="ax">成功率</text></svg>';
+    var h='<div class="legend">成功率</div><div style="display:flex;justify-content:center;margin:2px 0 8px">'+donut+'</div><div style="display:flex;justify-content:center;gap:22px;font-size:13px;color:var(--dim);margin-bottom:14px"><span>成功 <b style="font-family:var(--mono);color:var(--qing);font-size:15px">'+okN+'</b></span><span>失败 <b style="font-family:var(--mono);color:var(--zhu);font-size:15px">'+fail+'</b></span></div>';
+    var fails=Object.keys(oc).filter(function(k){return k!=='ok'}).map(function(k){return {k:k,n:oc[k]}}).sort(function(a,b){return b.n-a.n}).slice(0,6);
+    if(fails.length){var fmx=Math.max(1,...fails.map(function(f){return f.n}));h+='<div class="hbars">';fails.forEach(function(f){h+='<div class="hb"><span class="lab" title="'+esc(f.k)+'">'+esc(errName(f.k))+'</span><span class="trk"><i style="width:'+Math.round(f.n*100/fmx)+'%;background:var(--zhu)"></i></span><span class="v">'+f.n+'</span></div>';});h+='</div>';}
+    el.innerHTML=h;
+  })();
+  $$('#statsRange button').forEach(function(b){ b.classList.toggle('on', String(b.dataset.d)===String(sel)); b.onclick=function(){ S.statsDays=(b.dataset.d==='all'?'all':+b.dataset.d); renderStats(); }; });
+  var rb=$('#bStatsRefresh'); if(rb){ rb.hidden=!S.httpEnabled; rb.textContent='刷新额度'; rb.onclick=async function(){ if(rb.disabled)return; rb.disabled=true; try{ var r=await post({do:'http_quota_refresh'}); if(!r.ok){toast(r.why||'失败');rb.disabled=false;return;} watchQuotaProbe('#bStatsRefresh'); }catch(e){toast(e.message);rb.disabled=false;} }; }
+}
+async function renderStats(){ return await renderStatsV2(); }
 </script>
 </body>
 </html>

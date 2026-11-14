@@ -271,6 +271,14 @@ class AccountState:
     last_used_at: float | None = None
     stat_date: str = ""              # YYYY-MM-DD
     stat_today: int = 0
+    # 是否参与出图（面板账号卡片上的启用/停用）。停用 = 选号时直接跳过，其它不变。
+    enabled: bool = True
+    # HTTP 号：最近一次探测到的剩余生图额度 / 探测时间 / 恢复时间（额度耗尽时用来冷却到恢复点）
+    image_quota: int | None = None
+    quota_checked_at: float | None = None
+    quota_restore_at: float | None = None
+    # 该号见过的最大额度（用来显示「剩余/总量」如 23/25）
+    quota_cap: int | None = None
 
     def cooling(self, now: float | None = None) -> bool:
         now = time.time() if now is None else now
@@ -347,4 +355,9 @@ class AccountState:
             last_used_at=d.get("last_used_at"),
             stat_date=str(d.get("stat_date") or ""),
             stat_today=int(d.get("stat_today") or 0),
+            enabled=bool(d.get("enabled", True)),
+            image_quota=(None if d.get("image_quota") is None else int(d.get("image_quota"))),
+            quota_checked_at=d.get("quota_checked_at"),
+            quota_restore_at=d.get("quota_restore_at"),
+            quota_cap=(None if d.get("quota_cap") is None else int(d.get("quota_cap"))),
         )

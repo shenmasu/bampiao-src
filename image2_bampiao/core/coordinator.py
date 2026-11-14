@@ -44,7 +44,28 @@ class Outcome:
 Runner = Callable[[cfg_mod.Config, cfg_mod.Account, M.Item, Path], Outcome]
 
 
+def _http_runner(cfg, acc, item, dest) -> Outcome:
+    """HTTP 号池出图（旁路）。只在 acc.kind == 'http' 时被调用。"""
+    from ..httpgen import integration as hg
+
+    r = hg.generate(cfg, acc, item.prompt, dest,
+                    refs=item.refs, aspect=item.aspect, alpha=item.alpha,
+                    anim=bool(item.anim),
+                    svg=bool(getattr(item, "svg", False)),
+                    svg_anim=bool(getattr(item, "svg_anim", False)))
+    if r.get("ok"):
+        name = Path(str(r.get("path") or dest)).name
+        return Outcome(True, "ok", files=[name],
+                       note=str(r.get("note") or ""), reason=str(r.get("note") or ""))
+    return Outcome(False, str(r.get("kind") or "render"),
+                   note=str(r.get("tail") or "")[-400:],
+                   reason=str(r.get("reason") or r.get("tail") or "出图失败"),
+                   log=str(r.get("log") or ""))
+
+
 def _default_runner(cfg, acc, item, dest) -> Outcome:
+    if getattr(acc, "kind", "browser") == "http":
+        return _http_runner(cfg, acc, item, dest)
     from ..driver import session as sess
 
     # 图存在 jobs/<单号>/ 下：单号从路径取，好让会话标题写成【半瓢·R12·S01·时间】
@@ -108,6 +129,16 @@ class Coordinator:
             lambda a: self.store.account(a.id).fail_streak_now(),
         )
 
+    def _all_accounts(self) -> list[cfg_mod.Account]:
+        """浏览器号 + HTTP 号（开关关着时后者为空）。HTTP 号只在选号/出图这一层参与。"""
+        accs = list(self.cfg.accounts)
+        try:
+            from ..httpgen import integration as hg
+            accs.extend(hg.http_accounts(self.cfg))
+        except Exception:
+            pass
+        return accs
+
     def usable_accounts(self) -> list[cfg_mod.Account]:
         """现在能用的账号：没在冷却、没被判掉登录、没被"需要人过验证"挂起。
 
@@ -117,8 +148,10 @@ class Coordinator:
         from ..driver import session_health as sh
 
         out = []
-        for acc in self.cfg.accounts:
+        for acc in self._all_accounts():
             st = self.store.account(acc.id)
+            if not getattr(st, "enabled", True):
+                continue
             if st.cooling():
                 continue
             if st.login == "required":

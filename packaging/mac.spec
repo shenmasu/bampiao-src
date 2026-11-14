@@ -34,13 +34,24 @@ if icns.exists():
 # playwright 没有官方 hook，必须手动收（driver/node 是出图链路的地基）
 pw_datas, pw_bins, pw_hidden = collect_all("playwright")
 datas += pw_datas
-binaries = pw_bins
 
-hiddenimports = list(pw_hidden) + [
+# 2026-11-14 HTTP 号池旁路（与 bampiao.spec 对齐）：curl_cffi + certifi + vendor worker
+cw_datas, cw_bins, cw_hidden = collect_all("curl_cffi")
+cf_datas, cf_bins, cf_hidden = collect_all("certifi")
+datas += cw_datas + cf_datas
+datas += [(str(PKG / "httpgen" / "vendor"), "image2_bampiao/httpgen/vendor")]
+binaries = pw_bins + cw_bins + cf_bins
+
+hiddenimports = list(pw_hidden) + list(cw_hidden) + list(cf_hidden) + [
     # 和 Windows 那份保持一致：这两个模块在函数体内按需导入，
     # 静态分析可能跟不到，漏了就是启动即崩。
     "image2_bampiao.paths",
     "image2_bampiao.maintenance",
+    # HTTP 号池 vendor worker（运行时进程内 import，静态分析看不到依赖）
+    "cffi", "_cffi_backend",
+    "auth_worker", "image_worker", "utils", "utils.pkce", "utils.sentinel",
+    "utils.turnstile", "utils.web_pow",
+    "html", "html.parser", "http.cookiejar", "urllib.request", "email", "email.parser",
     # pywebview 的 macOS 后端是动态导入的
     "webview.platforms.cocoa",
     "pystray._darwin",
@@ -60,7 +71,7 @@ excludes = ["tkinter", "matplotlib", "pandas", "scipy", "IPython", "pytest",
 def analysis(entry: str) -> Analysis:
     return Analysis(
         [str(ROOT / "packaging" / entry)],
-        pathex=[str(ROOT)],
+        pathex=[str(ROOT), str(PKG / "httpgen" / "vendor")],
         binaries=binaries,
         datas=datas,
         hiddenimports=hiddenimports,

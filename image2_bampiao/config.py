@@ -50,12 +50,16 @@ class Account:
     id: str
     name: str
     browser: str
-    profile: Path
-    port: int
+    profile: Path | None = None
+    port: int = 0
+    # "browser" = 真浏览器 CDP 号（默认，行为不变）；"http" = 号池里的 HTTP 号
+    # （没有 profile/port，出图走 httpgen，不进浏览器主链路）
+    kind: str = "browser"
 
     def as_row(self) -> dict:
         return {"id": self.id, "name": self.name, "browser": self.browser,
-                "profile": str(self.profile), "port": self.port}
+                "profile": str(self.profile) if self.profile else "", "port": self.port,
+                "kind": self.kind}
 
 
 @dataclass
@@ -74,6 +78,8 @@ class Config:
     notify_desktop: bool = True
     notify_webhook: bool = False
     webhook_url: str = ""
+    # HTTP 号池旁路总开关（[http_pool] enabled）。默认关：关着时 HTTP 号不参与任何流程。
+    http_pool_enabled: bool = False
 
     # ---------------------------------------------------------------- 派生路径
     @property
@@ -161,6 +167,11 @@ def parse(raw: dict, path: Path) -> Config:
     if webhook_on and not webhook_url.startswith(("http://", "https://")):
         raise ConfigError("notify.webhook_enabled=true 但 webhook_url 不是 http(s) 地址。")
 
+    http_pool = raw.get("http_pool") or {}
+    if not isinstance(http_pool, dict):
+        raise ConfigError("http_pool 必须是表（[http_pool]），收到 %r。" % (http_pool,))
+    http_pool_enabled = bool(http_pool.get("enabled", False))
+
     accounts_raw = raw.get("accounts") or []
     if not isinstance(accounts_raw, list):
         raise ConfigError("accounts 必须是数组（[[accounts]]）。")
@@ -221,7 +232,8 @@ def parse(raw: dict, path: Path) -> Config:
                   account_fixed_id=fixed_id,
                   ui_port=ui_port, accounts=accounts,
                   notify_desktop=bool(notify.get("desktop", True)),
-                  notify_webhook=webhook_on, webhook_url=webhook_url)
+                  notify_webhook=webhook_on, webhook_url=webhook_url,
+                  http_pool_enabled=http_pool_enabled)
 
 
 # -------------------------------------------------------------------- 写默认
@@ -528,6 +540,44 @@ def set_scalar(path: Path, key: str, value, *, as_int: bool = False) -> None:
         except ConfigError:
             tmp.unlink(missing_ok=True)
             raise
+        os.replace(tmp, path)
+
+
+def set_http_pool_enabled(path: Path, on: bool) -> None:
+    """开关 [http_pool] enabled。导入功能必须打开它才生效（面板设置里那个选项）。"""
+    val = "true" if on else "false"
+    with locks.exclusive(path.with_suffix(".lock"), timeout=15,
+                         what="配置文件（另一个半瓢正在改它）"):
+        lines = path.read_text(encoding="utf-8").splitlines(keepends=True)
+        out, i, found = [], 0, False
+        while i < len(lines):
+            ln = lines[i]
+            if re.match(r"^\[http_pool\][ \t]*\r?\n?$", ln):
+                found = True
+                out.append(ln)
+                j, replaced = i + 1, False
+                while j < len(lines) and not re.match(r"^\[", lines[j]):
+                    if re.match(r"^[ \t]*enabled[ \t]*=", lines[j]):
+                        out.append("enabled = %s\n" % val)
+                        replaced = True
+                        j += 1
+                        continue
+                    out.append(lines[j]); j += 1
+                if not replaced:
+                    out.append("enabled = %s\n" % val)
+                i = j
+                continue
+            out.append(ln); i += 1
+        if not found:
+            if out and not out[-1].endswith("\n"):
+                out[-1] += "\n"
+            out.append("\n[http_pool]\nenabled = %s\n" % val)
+        tmp = path.with_suffix(".toml.tmp")
+        tmp.write_text("".join(out), encoding="utf-8")
+        try:
+            load(tmp)
+        except ConfigError:
+            tmp.unlink(missing_ok=True); raise
         os.replace(tmp, path)
 
 

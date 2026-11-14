@@ -24,9 +24,22 @@ datas = [(str(PKG / "ui" / "static"), "image2_bampiao/ui/static"),
 # 包目录里的 driver/node.exe 起 CDP 会话，漏了就"能启动、出图必崩"。
 pw_datas, pw_bins, pw_hidden = collect_all("playwright")
 datas += pw_datas
-binaries = pw_bins
 
-hiddenimports = list(pw_hidden) + [
+# 2026-11-14 HTTP 号池旁路：curl_cffi（含 libcurl DLL）+ certifi 证书 + vendor 里的 worker 脚本
+cw_datas, cw_bins, cw_hidden = collect_all("curl_cffi")
+cf_datas, cf_bins, cf_hidden = collect_all("certifi")
+datas += cw_datas + cf_datas
+datas += [(str(PKG / "httpgen" / "vendor"), "image2_bampiao/httpgen/vendor")]
+binaries = pw_bins + cw_bins + cf_bins
+
+hiddenimports = list(pw_hidden) + list(cw_hidden) + list(cf_hidden) + [
+    "cffi",
+    "_cffi_backend",
+    # vendor 里的 worker 是运行时进程内 import 的，静态分析看不到它的依赖，
+    # 这里显式声明让 PyInstaller 把它们的标准库依赖（html.parser 等）一起打包。
+    "auth_worker", "image_worker", "utils", "utils.pkce", "utils.sentinel",
+    "utils.turnstile", "utils.web_pow",
+    "html", "html.parser", "http.cookiejar", "urllib.request", "email", "email.parser",
     # 这两个是新模块，在函数体内按需导入（`from . import maintenance`），
     # PyInstaller 的静态分析不一定跟得到，漏了就是启动即崩。显式写死。
     "image2_bampiao.paths",
@@ -53,7 +66,7 @@ excludes = ["tkinter", "matplotlib", "pandas", "scipy", "IPython", "pytest", "_p
 def analysis(entry: str) -> Analysis:
     return Analysis(
         [str(ROOT / "packaging" / entry)],
-        pathex=[str(ROOT)],
+        pathex=[str(ROOT), str(PKG / "httpgen" / "vendor")],
         binaries=binaries,
         datas=datas,
         hiddenimports=hiddenimports,

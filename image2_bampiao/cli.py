@@ -214,12 +214,17 @@ def global_targets() -> dict:
         "opencode": home / ".config" / "opencode" / "AGENTS.md",
         "gemini": home / ".gemini" / "GEMINI.md",
         "dsh": _dsh_root() / "AGENTS.md",
+        # 2026-11-14 扩展：只在对应 agent 目录存在时才真正写（install_global_auto 会检测）
+        "qwen": home / ".qwen" / "QWEN.md",
+        "windsurf": home / ".codeium" / "windsurf" / "memories" / "global_rules.md",
     }
 
 
 _SKILL_TARGETS = {
     "workbuddy": Path(".workbuddy") / "skills" / "bampiao" / "SKILL.md",
     "hermes": Path(".hermes") / "skills" / "bampiao" / "SKILL.md",
+    # 通用 agent 技能库（DSH 等自定义 agent 也读这里）
+    "agents": Path(".agents") / "skills" / "bampiao" / "SKILL.md",
 }
 
 
@@ -670,13 +675,19 @@ def _pick_account(cfg, key: str | None):
     "有 2 个账号，请指定是哪一个" 拒掉，12 张全失败。加账号不该把正在干活的人搞挂。
     所以这里按"最近真的用过的那个"自动挑（profile 目录 mtime 最新），静默继续。
     """
-    if not cfg.accounts:
+    accounts = list(cfg.accounts)
+    try:
+        from .httpgen import integration as _hg
+        accounts.extend(_hg.http_accounts(cfg))
+    except Exception:
+        pass
+    if not accounts:
         raise cfg_mod.NeedsUser(
             "还没有账号。先建一个（浏览器会自动挑本机装了的那个）：\n"
             "  bampiao accounts add --name 我的号\n"
             "建完再登录：bampiao login")
     if key:
-        hits = [a for a in cfg.accounts if key in (a.id, a.name)]
+        hits = [a for a in accounts if key in (a.id, a.name)]
         if len(hits) == 1:
             return hits[0]
         if len(hits) > 1:
@@ -684,9 +695,9 @@ def _pick_account(cfg, key: str | None):
             raise cfg_mod.ConfigError("「%s」对应多个账号（%s），请用 id 指定"
                                       % (key, ", ".join(x.id for x in hits)))
         raise cfg_mod.ConfigError("没有这个账号：%s（现有：%s）"
-                                  % (key, ", ".join(a.id for a in cfg.accounts)))
-    if len(cfg.accounts) == 1:
-        return cfg.accounts[0]
+                                  % (key, ", ".join(a.id for a in accounts)))
+    if len(accounts) == 1:
+        return accounts[0]
 
     # 多账号且没指定 → 按 account_strategy 挑。
     # 2026-10-31 用户反馈：两个号，出图永远只用第一个，第二个白养着。
@@ -709,14 +720,16 @@ def _pick_account(cfg, key: str | None):
     # 先滤掉"现在不能用"的号：bampiao gen 直出不经过 Coordinator 的
     # usable_accounts()，不滤就会把冷却/掉登录/被验证挂起的号直接派去出图。
     # 全都不能用时退回全量，让下游按老规矩报错，别在这里悄悄换语义。
-    candidates = cfg.accounts
+    candidates = accounts
     if store_obj:
         try:
             from .driver import session_health as sh
 
             usable = []
-            for a in cfg.accounts:
+            for a in accounts:
                 st = store_obj.account(a.id)
+                if not getattr(st, "enabled", True):
+                    continue
                 if st.cooling() or st.login == "required":
                     continue
                 if sh.read_pause(str(cfg.data_dir), a.id):
@@ -740,7 +753,7 @@ def _pick_account(cfg, key: str | None):
             except Exception:
                 pass
         return acc
-    return cfg.accounts[0]
+    return accounts[0]
 
 
 def cmd_browser(a) -> int:
@@ -1330,10 +1343,17 @@ def cmd_gen(a) -> int:
                      % (time.strftime("%H:%M:%S"), missing[0])}
         _gen_record_end(cfg, rec, r)
     else:
-        r = sess.generate(cfg, acc, a.prompt, out, refs=a.ref or [], aspect=a.aspect,
-                          alpha=a.alpha, timeout=a.timeout, title=title,
-                          anim=bool(getattr(a, "gif", False)),
-                          svg=svg, svg_anim=svg_anim)
+        if getattr(acc, "kind", "browser") == "http":
+            from .httpgen import integration as _hg
+            r = _hg.generate(cfg, acc, a.prompt, out, refs=a.ref or [], aspect=a.aspect,
+                             alpha=a.alpha, timeout=a.timeout, title=title,
+                             anim=bool(getattr(a, "gif", False)),
+                             svg=svg, svg_anim=svg_anim)
+        else:
+            r = sess.generate(cfg, acc, a.prompt, out, refs=a.ref or [], aspect=a.aspect,
+                              alpha=a.alpha, timeout=a.timeout, title=title,
+                              anim=bool(getattr(a, "gif", False)),
+                              svg=svg, svg_anim=svg_anim)
         _gen_record_end(cfg, rec, r)
     if a.json:
         # error_code 是给 agent 决策的（SKILL 里那张表用的就是这套词），
@@ -2042,10 +2062,30 @@ def _open_window() -> int:
     import subprocess
     import sys
 
+    flags = 0x08000000 if sys.platform == "win32" else 0   # DETACHED_PROCESS（仅 Windows）
+
+    # 候选：Windows=bampiao-desktop.exe；mac 打包版=bampiao-gui。
+    # 用 autostart.desktop_exe() 统一口径（它已含 bampiao-gui），再补邻近目录扫描。
+    cands: list[Path] = []
+    try:
+        from . import autostart as _auto
+        _de = _auto.desktop_exe()
+        if _de:
+            cands.append(Path(_de))
+    except Exception:
+        pass
     exe = Path(sys.executable)
-    name = "bampiao-desktop.exe" if sys.platform == "win32" else "bampiao-desktop"
-    flags = 0x08000000 if sys.platform == "win32" else 0   # DETACHED_PROCESS
-    for cand in (exe.with_name(name), exe.parent / name):
+    names = ["bampiao-desktop.exe"] if sys.platform == "win32" else ["bampiao-gui", "bampiao-desktop"]
+    for nm in names:
+        cands.append(exe.with_name(nm))
+        cands.append(exe.parent / nm)
+
+    seen = set()
+    for cand in cands:
+        key = str(cand)
+        if key in seen:
+            continue
+        seen.add(key)
         if cand.exists():
             try:
                 subprocess.Popen([str(cand)], close_fds=True, creationflags=flags,
@@ -2058,17 +2098,22 @@ def _open_window() -> int:
                 _err("打不开窗口：%s" % e)
                 return EXIT_INTERNAL
 
-    # 源码运行：退到模块入口
-    try:
-        subprocess.Popen([sys.executable, "-m", "image2_bampiao.desktop"],
-                         close_fds=True, creationflags=flags,
-                         stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
-                         stderr=subprocess.DEVNULL)
-        print("正在打开半瓢窗口…")
-        return EXIT_OK
-    except Exception as e:
-        _err("打不开窗口：%s。可以用 bampiao ui --serve 起网页服务。" % e)
-        return EXIT_INTERNAL
+    # 源码运行（非冻结）才退到模块入口。冻结包里 sys.executable 是 CLI 本身，
+    # 再 `-m image2_bampiao.desktop` 只会被 argparse 判成非法子命令（mac 实测坑）。
+    if not getattr(sys, "frozen", False):
+        try:
+            subprocess.Popen([sys.executable, "-m", "image2_bampiao.desktop"],
+                             close_fds=True, creationflags=flags,
+                             stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
+                             stderr=subprocess.DEVNULL)
+            print("正在打开半瓢窗口…")
+            return EXIT_OK
+        except Exception as e:
+            _err("打不开窗口：%s。可以用 bampiao ui --serve 起网页服务。" % e)
+            return EXIT_INTERNAL
+
+    _err("找不到图形界面程序（bampiao-gui / bampiao-desktop），请确认安装完整；或先用 bampiao ui --serve。")
+    return EXIT_INTERNAL
 
 
 def _install_dir() -> Path | None:

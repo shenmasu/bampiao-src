@@ -50,6 +50,8 @@ class _LocalHTTPServer(ThreadingHTTPServer):
         self.server_port = int(port)
 
 STATIC = Path(__file__).resolve().parent / "static"
+# 后台探测额度时，vault/state 的落盘要串行（多线程并发写会互相覆盖）
+_QUOTA_PROBE_LOCK = threading.Lock()
 DEFAULT_PORT = 18799
 
 
@@ -87,6 +89,8 @@ class Panel:
         self._cfg_mtime: float | None = None
         # 更新相关的运行态：查到没、下没下、等没等、预下载到哪了
         self._UPD: dict = {"check": None, "dl": None, "busy": False, "waiting": False}
+        # 后台探额度的进度（前端拿来做转圈+done/total）
+        self._probe: dict = {"running": False, "total": 0, "done": 0}
 
     def _cfg(self) -> cfg_mod.Config:
         """返回最新的配置。
@@ -116,7 +120,8 @@ class Panel:
             hit = st.quota_hits[-1] if st.quota_hits else None
             phase = login_flow.read_phase(self.cfg, acc.id)
             accs.append({
-                "id": acc.id, "name": acc.name, "browser": acc.browser,
+                "id": acc.id, "name": acc.name, "browser": acc.browser, "kind": "browser",
+                "enabled": st.enabled,
                 # today 必须按"今天"算：stat_today 只在下次出图时才跨日归零，
                 # 这天没出图就会一直挂着上一个出图日的数字（2026-11-02 用户反馈）
                 "login": st.login, "today": st.images_today(_today()),
@@ -143,6 +148,39 @@ class Panel:
                 "browser_running": self._browser_running(acc.id),
                 "login_phase": phase,
             })
+        # HTTP 号池（旁路）：开关打开时把 vault 里的号也列出来，和浏览器号一起显示/筛选/分配
+        try:
+            from ..httpgen import integration as _hg
+            if _hg.enabled(self._cfg()):
+                _vault = _hg.get_vault(self._cfg())
+                for _h in _vault.public_list():
+                    _st = self.store.account(_h["id"])
+                    accs.append({
+                        "id": _h["id"], "name": _h["name"], "browser": "http", "kind": "http",
+                        "enabled": _st.enabled,
+                        "login": (_st.login if _st.login and _st.login != "unknown" else
+                                  ("ok" if _h.get("has_token") else
+                                   ("required" if _h.get("last_error") else "unknown"))),
+                        "today": _st.images_today(_today()),
+                        "cooling": _st.cooling(),
+                        "checked_at": _h.get("last_ok_at") or None,
+                        "cooldown_left_min": (max(0, round((_st.cooldown_until - time.time()) / 60))
+                                              if _st.cooling() else 0),
+                        "quota_hits": len(_st.quota_hits),
+                        "quota_today": _st.quota_hits_on(_today()),
+                        "window_ok": True, "paused_min": 0, "last_hit_after_n": None,
+                        "email": _h.get("email") or "", "plan": _h.get("plan") or "",
+                        "plan_source": "", "plan_checked_at": None,
+                        "browser_running": False, "login_phase": {},
+                        "has_token": _h.get("has_token"),
+                        "last_error": _h.get("last_error") or "",
+                        "image_quota": _st.image_quota,
+                        "quota_cap": _st.quota_cap,
+                        "quota_checked_at": _st.quota_checked_at,
+                        "quota_restore_at": _st.quota_restore_at,
+                    })
+        except Exception:
+            pass
         # 在跑的单要单独给：前端原来从"当前页 + 当前筛选"里取，
         # 翻到第二页或筛成"完成"时，顶栏写着在跑 1 而卡片区是空的。
         try:
@@ -155,6 +193,14 @@ class Panel:
                 _r["alive"] = run_alive(self.cfg, str(_r.get("account_id") or ""))
         except Exception:
             runs = []
+        try:
+            _http = [a for a in accs if a.get("kind") == "http" and a.get("enabled", True)]
+            _hsum = {"total": len(_http),
+                     "valid": len([a for a in _http if a.get("login") == "ok" and not a.get("cooling")]),
+                     "limited": len([a for a in _http if a.get("cooling")]),
+                     "remaining": sum(int(a.get("image_quota") or 0) for a in _http)}
+        except Exception:
+            _hsum = {"total": 0, "valid": 0, "limited": 0, "remaining": 0}
         from .. import browsers as _brs
         avail = [b for b in ("chrome", "edge") if _brs.find(b)]
         return {"ok": True, "version": __version__, "runs": runs, "browsers": avail,
@@ -176,7 +222,10 @@ class Panel:
                 "account_fixed_id": getattr(self._cfg(), "account_fixed_id", ""),
                 # 设置页要显示/改当前并行数，以及上限（上限 = 账号数）
                 "concurrency": self._cfg().concurrency,
-                "account_count": len(self._cfg().accounts),
+                "account_count": len(accs),
+                "http_pool_enabled": bool(getattr(self._cfg(), "http_pool_enabled", False)),
+                "http_summary": _hsum,
+                "quota_probe": dict(getattr(self, "_probe", {}) or {}),
                 "facets": self.store.facets()}
 
     def jobs(self, q: dict) -> dict:
@@ -451,6 +500,62 @@ class Panel:
 
         if do == "account_new":
             return self._account_new(body)
+
+        if do == "account_import":
+            return self._account_import(body)
+
+        if do == "account_enabled_set":
+            aid = str(body.get("account") or "")
+            if not aid:
+                return {"ok": False, "why": "没有账号"}
+            on = bool(body.get("on"))
+            if aid.startswith("http:"):
+                try:
+                    from ..httpgen import integration as _hg3
+                    _vault3 = _hg3.get_vault(self._cfg())
+                    pool = _vault3.public_list()
+                except Exception as e:  # noqa: BLE001
+                    return {"ok": False, "why": str(e)}
+                if not any(h.get("id") == aid for h in pool):
+                    return {"ok": False, "why": "没有这个账号"}
+                try:
+                    _vault3.update(aid, enabled=on)   # 出图/选号读的是 vault.enabled，必须同步
+                except Exception as e:  # noqa: BLE001
+                    return {"ok": False, "why": str(e)}
+            else:
+                if not any(a.id == aid for a in self._cfg().accounts):
+                    return {"ok": False, "why": "没有这个账号"}
+            st = self.store.account(aid)
+            st.enabled = on
+            self.store.save_account(st)
+            return {"ok": True, "account": aid, "enabled": st.enabled}
+
+        if do == "http_quota_refresh":
+            from ..httpgen import integration as _hg
+            if not _hg.enabled(self._cfg()):
+                return {"ok": False, "why": "未开启账号导入"}
+            one = str(body.get("account") or "")
+            try:
+                pool_list = _hg.get_vault(self._cfg()).public_list()
+            except Exception as e:  # noqa: BLE001
+                return {"ok": False, "why": str(e)}
+            ids = [one] if one else [h["id"] for h in pool_list if h.get("enabled", True)]
+            if not ids:
+                return {"ok": False, "why": "没有导入号可检测"}
+            self._probe_http_quota(ids)
+            return {"ok": True, "count": len(ids)}
+
+        if do == "http_enabled_get":
+            return {"ok": True, "enabled": bool(getattr(self._cfg(), "http_pool_enabled", False))}
+
+        if do == "http_enabled_set":
+            from .. import config as _cfg_mod
+            try:
+                _cfg_mod.set_http_pool_enabled(self.cfg.path, bool(body.get("on")))
+                self.cfg = _cfg_mod.load(self.cfg.path)
+            except Exception as e:
+                return {"ok": False, "why": str(e)}
+            return {"ok": True, "enabled": bool(getattr(self._cfg(), "http_pool_enabled", False))}
 
         if do == "login_cancel":
             return self._login_cancel(body)
@@ -849,6 +954,15 @@ class Panel:
         from .. import config as cfg_mod
         from ..driver import browser as br
 
+        _aid = str(body.get("account") or "")
+        if _aid.startswith("http:"):
+            try:
+                from ..httpgen import integration as _hg
+                ok = _hg.get_vault(self._cfg()).delete(_aid)
+            except Exception as e:
+                return {"ok": False, "why": "删不掉：%s" % e}
+            return {"ok": True, "why": "已删除导入账号"} if ok else {"ok": False, "why": "没有这个账号"}
+
         acc = self._acc_of({"account": [body.get("account") or ""]})
         if acc is None:
             return {"ok": False, "why": "没有这个账号"}
@@ -866,6 +980,21 @@ class Panel:
     def _account_rename(self, body: dict) -> dict:
         """改显示名，不动 id / profile / 登录态。"""
         from .. import config as cfg_mod
+
+        _aid = str(body.get("account") or "")
+        if _aid.startswith("http:"):
+            name = (str(body.get("name") or "").strip())[:20]
+            if not name:
+                return {"ok": False, "why": "名字不能为空"}
+            try:
+                from ..httpgen import integration as _hg
+                _vault = _hg.get_vault(self._cfg())
+                if not any(h.get("id") == _aid for h in _vault.public_list()):
+                    return {"ok": False, "why": "没有这个账号"}
+                _vault.update(_aid, name=name)
+            except Exception as e:  # noqa: BLE001
+                return {"ok": False, "why": "改不了：%s" % e}
+            return {"ok": True, "why": "已改名为「%s」" % name}
 
         acc = self._acc_of({"account": [body.get("account") or ""]})
         if acc is None:
@@ -986,6 +1115,124 @@ class Panel:
                 pass
             return r
         return {"ok": True, "account": {"id": acc.id, "name": acc.name}}
+
+    def _probe_http_quota(self, ids):
+        """后台并发探测一批 HTTP 号的额度，写回 store/vault（不阻塞面板）。"""
+        ids = [x for x in (ids or []) if x]
+        if not ids:
+            return
+        with _QUOTA_PROBE_LOCK:
+            self._probe = {"running": True, "total": len(ids), "done": 0}
+        import threading as _th
+        from concurrent.futures import ThreadPoolExecutor
+        from datetime import datetime
+
+        def iso_epoch(s):
+            if not s:
+                return None
+            try:
+                return datetime.fromisoformat(str(s).replace("Z", "+00:00")).timestamp()
+            except Exception:
+                return None
+
+        def run():
+            try:
+                from ..httpgen import integration as hg, worker as w
+                vault = hg.get_vault(self._cfg())
+
+                def one(aid):
+                    acc = vault.get(aid)
+                    if not acc:
+                        return
+                    try:
+                        au = w.run_auth(acc.get("email", ""), acc.get("password", ""),
+                                        acc.get("totp", ""), proxy=acc.get("proxy", ""), timeout=60)
+                        if not au.get("ok"):
+                            time.sleep(1.5)
+                            au = w.run_auth(acc.get("email", ""), acc.get("password", ""),
+                                            acc.get("totp", ""), proxy=acc.get("proxy", ""), timeout=60)
+                        if not au.get("ok"):
+                            with _QUOTA_PROBE_LOCK:
+                                vault.update(aid, last_error="登录失败：%s" % str(au.get("error") or "")[:60])
+                            return
+                        q = w.run_quota(au["access_token"], proxy=acc.get("proxy", ""), timeout=45)
+                        if not q.get("ok"):
+                            with _QUOTA_PROBE_LOCK:
+                                vault.update(aid, last_error="查额度失败：%s" % str(q.get("error") or "")[:60])
+                            return
+                        quota = int(q.get("quota") or 0)
+                        _qt = q.get("quota_total")
+                        try:
+                            _qt = int(_qt) if _qt is not None else 0
+                        except (TypeError, ValueError):
+                            _qt = 0
+                        rest = iso_epoch(q.get("restore_at"))
+                        plan = str(q.get("plan_type") or "")
+                        now = time.time()
+                        with _QUOTA_PROBE_LOCK:
+                            st = self.store.account(aid)
+                            st.login = "ok"
+                            st.login_checked_at = now
+                            st.image_quota = quota
+                            st.quota_cap = _qt if _qt > 0 else max(int(st.quota_cap or 0), quota)
+                            st.quota_checked_at = now
+                            st.quota_restore_at = rest
+                            st.cooldown_until = (rest or (now + 3600)) if quota <= 0 else 0
+                            if plan:
+                                st.plan = plan
+                                st.plan_source = "quota"
+                                st.plan_checked_at = now
+                            self.store.save_account(st)
+                            vault.update(aid, plan=plan or acc.get("plan", ""), last_error="")
+                    except Exception as e:  # noqa: BLE001
+                        try:
+                            with _QUOTA_PROBE_LOCK:
+                                vault.update(aid, last_error="探测异常：%s" % str(e)[:60])
+                        except Exception:
+                            pass
+
+                def wrapped(aid):
+                    try:
+                        one(aid)
+                    finally:
+                        with _QUOTA_PROBE_LOCK:
+                            self._probe["done"] = int(self._probe.get("done", 0)) + 1
+                with ThreadPoolExecutor(max_workers=4) as ex:
+                    list(ex.map(wrapped, ids))
+            except Exception:
+                pass
+            finally:
+                with _QUOTA_PROBE_LOCK:
+                    self._probe["running"] = False
+
+        _th.Thread(target=run, daemon=True, name="http-quota-probe").start()
+
+    def _account_import(self, body: dict) -> dict:
+        """批量导入 HTTP 号（粘贴文本）。必须先在设置里打开 [http_pool] enabled。"""
+        if not getattr(self._cfg(), "http_pool_enabled", False):
+            return {"ok": False, "why": "先在「设置 → 账号导入」里打开开关，再导入"}
+        text = str(body.get("text") or "")
+        if not text.strip():
+            return {"ok": False, "why": "没有可导入的内容"}
+        proxy = str(body.get("proxy") or "").strip()
+        try:
+            from ..httpgen import integration as _hg, pool as _pool
+            v = _hg.get_vault(self._cfg())
+            r = _pool.import_text(v, text, proxy=proxy)
+        except Exception as e:  # noqa: BLE001
+            return {"ok": False, "why": "导入失败：%s" % e}
+        # 导入后后台探一次额度，让状态立刻变成「可出图 / 约X后恢复」而不是「还没验证过」
+        try:
+            from ..httpgen.vault import account_id_for
+            _ok, _ = _pool.parse_text(text)
+            self._probe_http_quota([account_id_for(x["email"]) for x in _ok])
+        except Exception:
+            pass
+        return {"ok": True,
+                "added": r.get("added", 0), "updated": r.get("updated", 0),
+                "invalid": r.get("invalid", []), "total": r.get("total_valid", 0),
+                "why": "新增 %d、更新 %d、格式错 %d"
+                       % (r.get("added", 0), r.get("updated", 0), len(r.get("invalid", [])))}
 
     # ------------------------------------------------------------ 在线更新
     # 更新状态放在实例上（以前是类属性，所有 Panel 共用一份：
@@ -1398,6 +1645,34 @@ class Panel:
                          name="email-scan").start()
         threading.Thread(target=self._recycle_idle_browsers, daemon=True,
                          name="idle-recycler").start()
+        threading.Thread(target=self._http_autoheal, daemon=True,
+                         name="http-autoheal").start()
+
+    def _http_autoheal(self) -> None:
+        """导入号登录失效时，后台每 10 分钟用已存密码静默重登一次（失败不打扰用户）。"""
+        time.sleep(20.0)
+        tried: dict = {}
+        while True:
+            try:
+                from ..httpgen import integration as hg
+                if hg.enabled(self._cfg()):
+                    vault = hg.get_vault(self._cfg())
+                    now = time.time()
+                    ids = []
+                    for h in vault.public_list():
+                        if not h.get("enabled", True):
+                            continue
+                        aid = h["id"]
+                        st = self.store.account(aid)
+                        if (st.login == "required" or h.get("last_error")) and now - tried.get(aid, 0) > 900:
+                            ids.append(aid)
+                    for aid in ids[:6]:
+                        tried[aid] = now
+                    if ids:
+                        self._probe_http_quota(ids[:6])
+            except Exception:
+                pass
+            time.sleep(600.0)
 
     def _recycle_idle_browsers(self) -> None:
         """按时关掉闲置的浏览器进程。
@@ -2006,6 +2281,13 @@ def make_handler(panel: Panel):
         def log_message(self, *a):        # 安静：不要把每条请求打到控制台
             pass
 
+        def handle_one_request(self):
+            # 客户端提前断开（下载大图时关页面等）不该打整段 ConnectionResetError traceback
+            try:
+                super().handle_one_request()
+            except (ConnectionResetError, BrokenPipeError):
+                self.close_connection = True
+
         # ---- 工具
         def _send(self, code: int, body: bytes, ctype: str = "application/json; charset=utf-8",
                   extra: dict | None = None):
@@ -2095,6 +2377,8 @@ def make_handler(panel: Panel):
                     days = int((q.get("days") or ["14"])[0])
                 except ValueError:
                     days = 14
+                if days <= 0:
+                    days = 90  # 0/负数按"历史累计(近90天)"处理，别静默退化成"只今天"
                 kind = (q.get("kind") or ["all"])[0]
                 return self._json(200, {"ok": True, "kind": kind,
                                         **panel.store.stats(days, kind=kind)})
