@@ -399,7 +399,14 @@ def _ensure_locked(cfg: cfg_mod.Config, acc: cfg_mod.Account,
     if spawn_visibility == "hide":
         args += list(getattr(plat.impl, "OFFSCREEN_ARGS", []))
     args += [CHAT_URL]
-    new_pid = plat.spawn_detached(args, background=(spawn_visibility == "hide"))
+    # 登录(show)时把 chrome 的 stderr 落到日志，浏览器起不来时能看到真实原因（否则全吞，v5mg 教训）。
+    _errlog = None
+    if spawn_visibility == "show":
+        try:
+            _errlog = str(cfg.data_dir / "logs" / ("browser-%s.log" % acc.id))
+        except Exception:
+            _errlog = None
+    new_pid = plat.spawn_detached(args, background=(spawn_visibility == "hide"), errlog=_errlog)
     started = plat.start_time(new_pid) or time.time()
     _write_handle(cfg, Handle(acc.id, new_pid, acc.port, str(acc.profile), started))
 

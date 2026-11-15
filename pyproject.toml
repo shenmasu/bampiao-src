@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "bampiao"
-version = "0.2.75"
+version = "0.2.77"
 description = "半瓢：个人、非商业、非官方的本地命令行工具源码快照"
 readme = "README.md"
 requires-python = ">=3.12"
@@ -43,7 +43,7 @@ bampiao-desktop = "image2_bampiao.desktop:main"
 
 [project.urls]
 Homepage = "https://hezhuzi.com/lab/bampiao/"
-Repository = "https://github.com/shenmasu/bampiao-src"
+Repository = "https://github.com/shenmasu/bampiao-src.git"
 Changelog = "https://hezhuzi.com/lab/bampiao/#log"
 
 [tool.setuptools]

@@ -15,6 +15,7 @@ import subprocess
 import threading
 import time
 from ctypes import wintypes
+from pathlib import Path
 
 PLATFORM_NAME = "windows"
 
@@ -177,22 +178,38 @@ def kill_tree(pid: int, timeout: float = 8.0) -> bool:
     return not pid_alive(pid)
 
 
-def spawn_detached(args: list[str], cwd: str | None = None, background: bool = False) -> int:
+def spawn_detached(args: list[str], cwd: str | None = None, background: bool = False,
+                   errlog: str | None = None) -> int:
     """起一个脱离父进程的进程（无控制台）。返回 pid。
 
-    background=True：让它的第一个窗口「最小化、不激活」（SW_SHOWMINNOACTIVE）。
-    不这样的话 Chrome 一启动就拿走前台焦点——窗口虽然马上被藏起来，键盘焦点却一直在它身上，
-    用户正在别处打的字会打进一个看不见的浏览器（2026-10-30 实测：命令退出后 20 秒焦点都没还回来）。
+    background=True：第一个窗口最小化、不激活（SW_SHOWMINNOACTIVE），防抢前台焦点。
+    errlog：给了就把子进程 stderr 写到该文件（默认 None=丢弃）。登录等要看失败原因的场景传日志路径；
+    否则 spawn 失败时 stderr 全 DEVNULL、根因看不到（2026-11-15 v5mg 排查教训）。
     """
     si = None
     if background:
         si = subprocess.STARTUPINFO()
         si.dwFlags |= subprocess.STARTF_USESHOWWINDOW
-        si.wShowWindow = 7                  # SW_SHOWMINNOACTIVE
-    p = subprocess.Popen(args, cwd=cwd, close_fds=True, startupinfo=si,
-                         creationflags=DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP,
-                         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-                         stdin=subprocess.DEVNULL)
+        si.wShowWindow = 7
+    err_fh = None
+    if errlog:
+        try:
+            Path(errlog).parent.mkdir(parents=True, exist_ok=True)
+            err_fh = open(errlog, "ab")
+        except Exception:
+            err_fh = None
+    try:
+        p = subprocess.Popen(args, cwd=cwd, close_fds=True, startupinfo=si,
+                             creationflags=DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP,
+                             stdout=subprocess.DEVNULL,
+                             stderr=(err_fh if err_fh is not None else subprocess.DEVNULL),
+                             stdin=subprocess.DEVNULL)
+    finally:
+        if err_fh is not None:
+            try:
+                err_fh.close()
+            except Exception:
+                pass
     return p.pid
 
 

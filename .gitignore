@@ -30,3 +30,9 @@ _verify/
 _pytesttmp/
 _pytesttmp*/
 _gif_test*/
+
+# pytest 临时目录（--basetemp 或默认在当前目录时产生）
+pytest-of-*/
+.pytest_cache/
+# 本地临时
+_neww_*.txt

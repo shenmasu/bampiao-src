@@ -54,7 +54,11 @@ _RULES: tuple[tuple[tuple[str, ...], str], ...] = (
      "账号掉登录了：去面板「账号」页重新登录"),
     # 注意：不能只写"额度"——失败日志里常有"不占额度、不再空转"这种句子，
     # 会被误判成撞上限（2026-11-03 用真实日志验证时踩到）。
-    (("生成上限", "撞上限", "达到上限", "quota_hit", "quota exceeded", "额度用完了"),
+    # 2026-11-15：加真实 ChatGPT Free 额度墙文案——"你已达到 Free 套餐的…" / "reached your ... limit" /
+    # "usage limit"。原来缺这些，额度墙被当普通失败只冷却 5 分钟，账号一直显示"可用"。
+    (("生成上限", "撞上限", "达到上限", "quota_hit", "quota exceeded", "额度用完了",
+      "free 套餐", "free套餐", "套餐的", "使用上限", "用量上限",
+      "reached your", "usage limit", "you've reached", "达到上限", "额度已达"),
      "这个号的生成额度用完了：等冷却，或换一个号"),
 )
 
@@ -266,6 +270,13 @@ _CODE_TO_CLS = {
 def _cls_from_text(text: str) -> str:
     t = text or ""
     low = t.lower()
+    # 2026-11-15 B2：撞额度墙（ChatGPT Free/会员当日额度用完）——必须在其它分支之前判，
+    # 否则"你已达到 Free 套餐的…"这类被当普通失败、只冷却 5 分钟、账号一直显示可用。
+    if any(k in low or k in t for k in (
+            "free 套餐", "free套餐", "套餐的", "使用上限", "用量上限", "生成上限",
+            "撞上限", "达到上限", "额度用完", "quota_hit", "quota exceeded",
+            "reached your", "usage limit", "you've reached", "rate limit reached")):
+        return "quota"
     if "empty_reply" in low or "没读到这次的回复" in t:
         return "empty"
     if "no_composer" in low:

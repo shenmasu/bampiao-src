@@ -100,6 +100,19 @@ def set_limit(cfg, ident: str, daily=None, concurrency=None) -> int:
         return n
 
 
+def set_enabled(cfg, ident: str, on: bool) -> int:
+    """启用/停用一个分享 key。"""
+    with _LOCK:
+        d = _load(cfg)
+        n = 0
+        for k in d["keys"]:
+            if ident in (k.get("id"), k.get("name")):
+                k["enabled"] = bool(on)
+                n += 1
+        _save(cfg, d)
+        return n
+
+
 def _find_key(d: dict, token: str):
     for k in d.get("keys", []):
         if k.get("enabled", True) and secrets.compare_digest(str(k.get("key", "")), token):
@@ -156,40 +169,85 @@ def _candidates(cfg):
     out = []
     for a in rows:
         if not a.get("enabled", True):
-            continue
+            continue        # 号池里被停用 → 不派活
         aid = a.get("id")
         try:
             st = store.account(aid)
         except Exception:
             continue
         if not getattr(st, "enabled", True):
-            continue
+            continue        # store 里停用 → 不派活
         cd = getattr(st, "cooldown_until", 0) or 0
         if cd and cd > time.time():
             continue
-        q = getattr(st, "image_quota", None)
-        if q is not None and int(q) <= 0:
+        # 额度：vault.quota（管理台探测写入）优先，其次 store.image_quota；任一明确 <=0 就踢出
+        vq = a.get("quota")
+        sq = getattr(st, "image_quota", None)
+        eff = vq if vq is not None else sq
+        if eff is not None and int(eff) <= 0:
+            continue        # 额度=0 → 不派活
+        # 探测/登录失败的坏号（无 token 且 last_error 有值）→ 不进候选，避免每单都卡在它身上登录超时
+        if not a.get("access_token") and (a.get("last_error") or ""):
             continue
-        out.append((q if q is not None else 9999, aid, a))
+        # 排序权重：有 token 且有额度最高；无 token 待登录次之；从未探测(quota=None)排最后试
+        if a.get("access_token") and eff is not None:
+            weight = 2000 + int(eff)
+        elif a.get("access_token"):
+            weight = 1500
+        else:
+            weight = 500        # 无 token 需要登录的，优先级最低（登录慢，别让它挡路）
+        out.append((weight, aid, a))
     out.sort(key=lambda x: -x[0])
     return [(aid, a) for _, aid, a in out]
 
 
-def render_once(cfg, prompt: str, timeout: float = 180.0):
-    """从 HTTP 号池挑号出图，返回 (b64, account_id)。失败抛异常。"""
+def render_once(cfg, prompt: str, timeout: float = 180.0, *,
+                size: str = "", quality: str = "", images: list | None = None):
+    """从 HTTP 号池挑号出图，返回 (b64, account_id)。失败抛异常。
+    size: 如 "1024x1024"/"1024x1536"/"1536x1024"；images: 参考图列表（每项为 bytes 或 data URI）。"""
     v = hg.get_vault(cfg)
     store = store_mod.Store(cfg)
     cands = _candidates(cfg)
     if not cands:
         raise RuntimeError("没有可用的导入号（都在冷却 / 停用 / 0 额度）")
     last = ""
-    for aid, a in cands[:6]:
+    # 单号出图限时：正常 22-60s，给 60s 上限（慢于 60s 基本是卡号）；卡号冷却后换下一个
+    per_timeout = min(float(timeout), 60.0)
+    # 参考图规范化成 image_worker 要的 dict 列表 [{b64,filename,mime_type}]
+    _imgs = None
+    if images:
+        import base64 as _b64
+        _imgs = []
+        for i, im in enumerate(images, 1):
+            raw = None
+            mime = "image/png"
+            if isinstance(im, (bytes, bytearray)):
+                raw = bytes(im)
+            elif isinstance(im, str) and im.startswith("data:"):
+                try:
+                    head, b64part = im.split(",", 1)
+                    raw = _b64.b64decode(b64part)
+                    mime = head.split(";")[0].replace("data:", "") or "image/png"
+                except Exception:
+                    raw = None
+            if raw:
+                _imgs.append({"b64": _b64.b64encode(raw).decode("ascii"),
+                              "filename": "ref%d.png" % i, "mime_type": mime})
+        if not _imgs:
+            _imgs = None
+    for aid, a in cands[:4]:
         tok = pool.ensure_token(v, aid)
         if not tok.get("ok"):
             last = "登录失败：%s" % (tok.get("error") or "")
+            try:
+                store.set_cooldown(aid, 300) if hasattr(store, "set_cooldown") else None
+            except Exception:
+                pass
             continue
         r = worker.run_image(tok["access_token"], prompt, model="gpt-image-2",
-                             output_format="png", proxy=a.get("proxy") or "", timeout=float(timeout))
+                             size=size or "", quality=quality or "",
+                             images=_imgs, output_format="png",
+                             proxy=a.get("proxy") or "", timeout=per_timeout)
         if r.get("ok") and r.get("data"):
             b64 = r["data"][0].get("b64_json") or ""
             try:
@@ -202,7 +260,48 @@ def render_once(cfg, prompt: str, timeout: float = 180.0):
                 pass
             return b64, aid
         last = str(r.get("error") or r.get("error_code") or "出图失败")
+        # 出图失败/超时 → 该号冷却 5 分钟，本单/后续单都先跳过它，避免反复卡同一个慢号
+        _cool_down(cfg, store, v, aid, a, last)
     raise RuntimeError(last or "出图失败")
+
+
+def _cool_down(cfg, store, vault, aid, acc, reason):
+    """出图失败/超时：普通失败冷却 5 分钟；若是撞额度墙（Free 套餐用完），则该号标 quota=0、
+    冷却到次日（额度恢复），工作台才会显示「额度用完」而不是「可用」。
+    （2026-11-15 B2：原来一律 5 分钟冷却，额度墙号 5 分钟后又被派活，反复撞墙，状态还一直显可用。）"""
+    is_quota = False
+    try:
+        from . import why as _why
+        info = _why.classify(str(reason or ""), "")
+        is_quota = (getattr(info, "cls", "") == "quota")
+    except Exception:
+        is_quota = False
+    if is_quota:
+        try:
+            until = time.time() + 86400   # 到明天再试（额度按天恢复）
+            vault.update(aid, cooldown_until=until, quota=0,
+                         last_error=("额度用完：" + str(reason))[:200])
+        except Exception:
+            pass
+        try:
+            st = store.account(aid)
+            st.cooldown_until = until
+            st.image_quota = 0
+            store.save_account(st)
+        except Exception:
+            pass
+        return
+    try:
+        until = time.time() + 300
+        vault.update(aid, cooldown_until=until, last_error=("出图失败/超时：" + str(reason))[:200])
+    except Exception:
+        pass
+    try:
+        st = store.account(aid)
+        st.cooldown_until = until
+        store.save_account(st)
+    except Exception:
+        pass
 
 
 # ---------------------------------------------------------------- 任务记账（让本机任务页能看到）
@@ -321,6 +420,14 @@ class _Handler(BaseHTTPRequestHandler):
         store = job = None
         try:
             store, job = _job_start(self.cfg, keyrec, prompt)
+            # 出图前先记下预估要用的号，便于卡住/出图中时也能看到落在哪个号
+            try:
+                cands = _candidates(self.cfg)
+                if cands and job:
+                    job.ran_on = cands[0][0] or ""
+                    store.save(job)
+            except Exception:
+                pass
             data = []
             b64s = []
             last_aid = ""
@@ -348,6 +455,12 @@ def serve(cfg, host: str = "0.0.0.0", port: int = 8788, block: bool = True):
     print("共享网关已启动：http://%s:%d/v1   模型=%s" % (host, int(port), MODEL), flush=True)
     if block:
         httpd.serve_forever()
+    else:
+        # 非阻塞：起后台线程真正开始服务，否则调用方拿到 httpd 却没人 serve
+        import threading
+        th = threading.Thread(target=httpd.serve_forever, daemon=True, name="bampiao-share-gw")
+        th.start()
+        httpd._serve_thread = th
     return httpd
 
 

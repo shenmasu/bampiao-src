@@ -12,6 +12,7 @@ from __future__ import annotations
 import base64
 import hashlib
 import json
+import os
 import sys
 import time
 from pathlib import Path
@@ -61,6 +62,52 @@ def _dec(text: str) -> bytes:
     return _dpapi(base64.b64decode(text), False)
 
 
+# ------------------------------------------------------------------ 主密钥（跨平台）
+# 2026-11-14：为了把号池搬到 Linux 服务器跑共享网关，新增「主密钥」加密（cryptography.Fernet）。
+# 设计：
+# - Windows（本机）：默认仍用 DPAPI（凭证不出本机）；但也能读「主密钥格式」的文件。
+# - Linux（服务器）：只用主密钥，密钥文件存在 <data_dir>/state/vault.key（权限 600）。
+# - 文件里带 "enc": "dpapi" | "mk" 标记，读到就知道用哪把锁开。
+def _key_path() -> Path | None:
+    """主密钥文件路径（<data_dir>/state/vault.key）。用环境变量 BAMPIAO_VAULT_KEY 可覆盖。"""
+    env = os.environ.get("BAMPIAO_VAULT_KEY")
+    if env:
+        return Path(env)
+    return None
+
+
+def _load_mk() -> "Fernet | None":
+    """读主密钥；没有就返回 None（不自动生成，避免误建）。"""
+    from cryptography.fernet import Fernet
+
+    kp = _KEY_FILE
+    if not kp or not Path(kp).exists():
+        return None
+    try:
+        return Fernet(Path(kp).read_bytes().strip())
+    except Exception:
+        return None
+
+
+def _mnk_enc(data: bytes) -> str:
+    f = _load_mk()
+    if f is None:
+        raise NotImplementedError("主密钥不存在：先跑 bampiao vault init-key 或在服务器生成 vault.key")
+    return f.encrypt(data).decode("ascii")
+
+
+def _mnk_dec(text: str) -> bytes:
+    f = _load_mk()
+    if f is None:
+        raise NotImplementedError("主密钥不存在，无法解密这份号池")
+    return f.decrypt(text.encode("ascii"))
+
+
+# 当前 Vault 用的主密钥文件（Vault.__init__ 时设一次）
+_KEY_FILE: Path | None = None
+
+
+
 # ------------------------------------------------------------------ helpers
 def account_id_for(email: str) -> str:
     norm = (email or "").strip().lower()
@@ -81,6 +128,29 @@ def _mask_email(email: str) -> str:
 class Vault:
     def __init__(self, path: str | Path):
         self.path = Path(path)
+        # 主密钥文件：优先 BAMPIAO_VAULT_KEY，否则 <同目录>/vault.key
+        global _KEY_FILE
+        env = os.environ.get("BAMPIAO_VAULT_KEY")
+        if env:
+            _KEY_FILE = Path(env)
+        else:
+            _KEY_FILE = self.path.parent / "vault.key"
+
+    # ---- 加密/解密：按文件标记选锁
+    def _blob_enc(self, payload: bytes) -> tuple[str, str]:
+        """返回 (加密串, enc标记)。Linux 用主密钥；Windows 优先 DPAPI（除非被要求用主密钥）。"""
+        # 服务器（非 win32）只能主密钥
+        if sys.platform != "win32" or os.environ.get("BAMPIAO_VAULT_USE_MK") == "1":
+            return _mnk_enc(payload), "mk"
+        return _enc(payload), "dpapi"
+
+    def _blob_dec(self, text: str, enc: str) -> bytes:
+        if enc == "mk":
+            return _mnk_dec(text)
+        if enc == "dpapi":
+            return _dec(text)
+        # 老文件没标记：按平台猜（Windows 是 dpapi）
+        return _dec(text) if sys.platform == "win32" else _mnk_dec(text)
 
     # ---- 存储
     def _read_all(self) -> list[dict]:
@@ -91,7 +161,8 @@ class Vault:
             blob = raw.get("blob") if isinstance(raw, dict) else None
             if not blob:
                 return []
-            data = json.loads(_dec(blob).decode("utf-8"))
+            enc = raw.get("enc") or ""
+            data = json.loads(self._blob_dec(blob, enc).decode("utf-8"))
             accs = data.get("accounts") if isinstance(data, dict) else None
             return [a for a in (accs or []) if isinstance(a, dict)]
         except Exception:
@@ -106,7 +177,8 @@ class Vault:
             pass
         payload = json.dumps({"version": 1, "accounts": accounts},
                              ensure_ascii=False).encode("utf-8")
-        doc = {"version": 1, "blob": _enc(payload)}
+        blob, enc = self._blob_enc(payload)
+        doc = {"version": 1, "enc": enc, "blob": blob}
         tmp = self.path.with_suffix(".json.tmp")
         tmp.write_text(json.dumps(doc), encoding="utf-8")
         tmp.replace(self.path)

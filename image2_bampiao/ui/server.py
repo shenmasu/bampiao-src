@@ -91,6 +91,9 @@ class Panel:
         self._UPD: dict = {"check": None, "dl": None, "busy": False, "waiting": False}
         # 后台探额度的进度（前端拿来做转圈+done/total）
         self._probe: dict = {"running": False, "total": 0, "done": 0}
+        # 共享网关（把本机 HTTP 号池当小服务器借给局域网/Tailscale 的人）运行态
+        self._share: dict = {"httpd": None, "port": 0, "host": "", "err": ""}
+        self._share_lock = threading.Lock()
 
     def _cfg(self) -> cfg_mod.Config:
         """返回最新的配置。
@@ -111,6 +114,103 @@ class Panel:
                 # 配置正被另一个进程写（写一半）就用旧的，别把整个面板搞崩
                 pass
         return self.cfg
+
+    # ─────────────────────── 共享网关（把本机当小服务器借给朋友）───────────────────────
+    def _share_state(self) -> dict:
+        """给前端看的共享网关状态：开没开、地址、分享 key 列表。"""
+        from .. import gateway
+        cfg = self._cfg()
+        running = self._share["httpd"] is not None
+        try:
+            keys = gateway.list_keys(cfg)
+        except Exception:
+            keys = []
+        host = self._share["host"] or gateway.best_host()
+        port = self._share["port"] or int(getattr(cfg, "share_port", 0) or 8788)
+        return {
+            "running": running,
+            "host": host,
+            "port": port,
+            "url": ("http://%s:%d" % (host, port)) if running else "",
+            "err": self._share["err"],
+            "keys": [{"id": k.get("id"), "name": k.get("name"), "key": k.get("key"),
+                      "daily_limit": k.get("daily_limit"), "concurrency": k.get("concurrency"),
+                      "enabled": k.get("enabled", True)} for k in keys],
+        }
+
+    def share_start(self, port: int | None = None) -> dict:
+        from .. import gateway
+        with self._share_lock:
+            if self._share["httpd"] is not None:
+                return {"ok": True, **self._share_state()}
+            cfg = self._cfg()
+            try:
+                want = int(port or getattr(cfg, "share_port", 0) or 8788)
+            except Exception:
+                want = 8788
+            last_err = ""
+            for p in range(want, want + 20):   # 端口被占就往后找
+                try:
+                    httpd = gateway.serve(cfg, host="0.0.0.0", port=p, block=False)
+                    self._share.update({"httpd": httpd, "port": int(p),
+                                        "host": gateway.best_host(), "err": ""})
+                    return {"ok": True, **self._share_state()}
+                except OSError as e:
+                    last_err = str(e)
+                    continue
+            self._share["err"] = last_err or "端口都被占用"
+            return {"ok": False, "why": "起不来：" + self._share["err"], **self._share_state()}
+
+    def share_stop(self) -> dict:
+        with self._share_lock:
+            httpd = self._share["httpd"]
+            if httpd is not None:
+                try:
+                    httpd.shutdown()
+                    httpd.server_close()
+                except Exception:
+                    pass
+            self._share.update({"httpd": None, "port": 0, "host": "", "err": ""})
+            return {"ok": True, **self._share_state()}
+
+    def share_key(self, body: dict) -> dict:
+        """新建/删除/改额度/启停 分享 key。"""
+        from .. import gateway
+        cfg = self._cfg()
+        sub = str(body.get("kdo") or "")
+        ident = str(body.get("name") or "").strip()
+        if sub == "add":
+            if not ident:
+                return {"ok": False, "why": "名字不能为空"}
+            gateway.add_key(cfg, ident, daily=int(body.get("daily") or 100),
+                            concurrency=int(body.get("concurrency") or 3))
+        elif sub == "rm":
+            if not ident:
+                return {"ok": False, "why": "没说删哪个"}
+            gateway.rm_key(cfg, ident)
+        elif sub == "limit":
+            if not ident:
+                return {"ok": False, "why": "没说改哪个"}
+            gateway.set_limit(cfg, ident,
+                              daily=(int(body["daily"]) if body.get("daily") else None),
+                              concurrency=(int(body["concurrency"]) if body.get("concurrency") else None))
+        elif sub == "toggle":
+            keys = gateway.list_keys(cfg)
+            rec = next((k for k in keys if k.get("name") == ident or k.get("id") == ident), None)
+            if not rec:
+                return {"ok": False, "why": "没有这个 key"}
+            gateway.set_enabled(cfg, rec["id"], not rec.get("enabled", True))
+        elif sub == "invite":
+            keys = gateway.list_keys(cfg)
+            rec = next((k for k in keys if k.get("name") == ident or k.get("id") == ident), None)
+            if not rec:
+                return {"ok": False, "why": "没有这个 key"}
+            host = self._share["host"] or gateway.best_host()
+            port = self._share["port"] or int(getattr(cfg, "share_port", 0) or 8788)
+            return {"ok": True, "invite": gateway.invite_paragraph(rec, host, port=port)}
+        else:
+            return {"ok": False, "why": "未知操作"}
+        return {"ok": True, **self._share_state()}
 
     # ------------------------------------------------------------ 读
     def overview(self) -> dict:
@@ -488,6 +588,15 @@ class Panel:
 
         if do == "diag":
             return self._diag()
+
+        if do == "share_start":
+            return self.share_start(body.get("port"))
+        if do == "share_stop":
+            return self.share_stop()
+        if do == "share_key":
+            return self.share_key(body)
+        if do == "share_state":
+            return {"ok": True, **self._share_state()}
 
         if do == "feedback":
             return self._feedback(body)

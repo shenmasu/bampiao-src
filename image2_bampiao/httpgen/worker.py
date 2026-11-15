@@ -58,7 +58,12 @@ def _kill_tree(pid: int) -> None:
                            creationflags=_NO_WINDOW, timeout=15)
         else:
             import signal
-            os.killpg(os.getpgid(pid), signal.SIGKILL)
+            # 双保险：只有当 pid 自己就是进程组头（pgid==pid，即 start_new_session 生效）才 killpg，
+            # 否则 killpg 会命中调用者自己的进程组，把网关/桌面主进程一起 SIGKILL。
+            if os.getpgid(pid) == pid:
+                os.killpg(pid, signal.SIGKILL)
+            else:
+                os.kill(pid, signal.SIGKILL)
     except Exception:
         pass
 
@@ -73,9 +78,15 @@ def _run_worker(script: Path, payload: dict, timeout: float) -> dict:
         out_f = open(os.path.join(td, "out.json"), "wb")
         err_f = open(os.path.join(td, "err.txt"), "wb")
         try:
-            proc = subprocess.Popen([py, str(script)], stdin=subprocess.PIPE,
-                                    stdout=out_f, stderr=err_f, cwd=str(VENDOR),
-                                    creationflags=_NO_WINDOW)
+            # 关键：子进程建独立会话/进程组（Linux start_new_session），
+            # 否则超时时 _kill_tree 的 os.killpg(getpgid(pid)) 会命中调用者自己的进程组，
+            # 把整个网关/桌面进程一起 SIGKILL 掉（2026-11-15 云端网关卡死根因）。
+            _popen_kw = dict(stdin=subprocess.PIPE, stdout=out_f, stderr=err_f, cwd=str(VENDOR))
+            if sys.platform == "win32":
+                _popen_kw["creationflags"] = _NO_WINDOW
+            else:
+                _popen_kw["start_new_session"] = True
+            proc = subprocess.Popen([py, str(script)], **_popen_kw)
         except FileNotFoundError as e:
             out_f.close(); err_f.close()
             return {"ok": False, "error_code": "python_missing", "error": "找不到解释器 %s：%s" % (py, e)}
