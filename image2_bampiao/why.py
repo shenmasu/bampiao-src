@@ -291,8 +291,19 @@ def _cls_from_text(text: str) -> str:
         return "page"
     if "一直是空白" in t or "goto" in low or "连不上" in t:
         return "network"
-    if "被拒答" in t or "内容政策" in t or "content policy" in low:
+    if any(k in low or k in t for k in (
+            "被拒答", "内容政策", "content policy", "防护限制", "违反",
+            "moderation", "safety system", "content_policy_violation",
+            "不能生成", "无法生成")):
         return "policy"
+    if any(k in low or k in t for k in (
+            "http 401", "unauthorized", "token_invalidated", "token_revoked",
+            "no_auth_code_obtained")):
+        return "auth"
+    if any(k in low or k in t for k in (
+            "boringssl", "ssl_error", "curl: (35)", "curl: (56)",
+            "handshake_timeout", "connection closed", "proxy")):
+        return "network"
     if "参考图" in t or "附件" in t:
         return "file"
     return ""

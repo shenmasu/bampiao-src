@@ -255,6 +255,15 @@ def _is_content_policy_error(error_msg: str) -> bool:
     return any(keyword in low for keyword in _CONTENT_POLICY_KEYWORDS)
 
 
+def _is_network_error(error: object) -> bool:
+    text = str(error or "").lower()
+    return any(keyword in text for keyword in (
+        "boringssl", "ssl_error", "curl: (35)", "curl: (56)",
+        "connection closed", "connection reset", "proxy", "timed out",
+        "timeout",
+    ))
+
+
 def _is_model_text_reply_instead_of_image(message: str) -> bool:
     if not message:
         return False
@@ -874,6 +883,7 @@ class OpenAIWebImageClient:
         upstream_model: str = "gpt-5-5",
         thinking_effort: str = "",
         session: Any = None,
+        handshake_timeout_secs: float = 30.0,
         poll_timeout_secs: float = 150.0,
         initial_wait_secs: float = 8.0,
         poll_interval_secs: float = 6.0,
@@ -893,6 +903,7 @@ class OpenAIWebImageClient:
         self.session_id = str(uuid.uuid4())
         self.pow_script_sources: list[str] = []
         self.pow_data_build = ""
+        self.handshake_timeout_secs = max(0.05, float(handshake_timeout_secs))
         self.poll_timeout_secs = max(0.05, float(poll_timeout_secs))
         self.initial_wait_secs = max(0.0, float(initial_wait_secs))
         self.poll_interval_secs = max(0.05, float(poll_interval_secs))
@@ -1126,7 +1137,7 @@ class OpenAIWebImageClient:
         response = self.session.get(
             self.base_url + "/",
             headers=self._bootstrap_headers(),
-            timeout=30,
+            timeout=self.handshake_timeout_secs,
         )
         self._ensure_ok(response, "bootstrap")
         self.pow_script_sources, self.pow_data_build = parse_pow_resources(getattr(response, "text", "") or "")
@@ -1142,7 +1153,7 @@ class OpenAIWebImageClient:
             self.base_url + prepare_path,
             headers=self._headers(prepare_path, {"Content-Type": "application/json"}),
             json={"p": p_token},
-            timeout=30,
+            timeout=self.handshake_timeout_secs,
         )
         self._ensure_ok(response, "chat_requirements_prepare")
         prepare_data = response.json()
@@ -1179,7 +1190,7 @@ class OpenAIWebImageClient:
                 "proof_token": proof_token,
                 "turnstile_token": turnstile_token,
             },
-            timeout=30,
+            timeout=self.handshake_timeout_secs,
         )
         self._ensure_ok(response, "chat_requirements_finalize")
         data = response.json()
@@ -1210,7 +1221,7 @@ class OpenAIWebImageClient:
                 "width": width,
                 "height": height,
             },
-            timeout=60,
+            timeout=self.handshake_timeout_secs,
         )
         self._ensure_ok(response, path)
         upload_meta = response.json()
@@ -1232,7 +1243,7 @@ class OpenAIWebImageClient:
                 "Accept-Language": "en-US,en;q=0.8",
             },
             data=data,
-            timeout=120,
+            timeout=self.handshake_timeout_secs,
         )
         self._ensure_ok(put_resp, "image_upload")
 
@@ -1241,7 +1252,7 @@ class OpenAIWebImageClient:
             self.base_url + done_path,
             headers=self._headers(done_path, {"Content-Type": "application/json", "Accept": "application/json"}),
             data="{}",
-            timeout=60,
+            timeout=self.handshake_timeout_secs,
         )
         self._ensure_ok(done_resp, done_path)
         return {
@@ -1280,7 +1291,7 @@ class OpenAIWebImageClient:
             self.base_url + path,
             headers=self._image_headers(path, requirements),
             json=payload,
-            timeout=60,
+            timeout=self.handshake_timeout_secs,
         )
         self._ensure_ok(response, path)
         return str((response.json() or {}).get("conduit_token") or "")
@@ -1369,7 +1380,7 @@ class OpenAIWebImageClient:
             self.base_url + path,
             headers=self._image_headers(path, requirements, conduit_token, "text/event-stream"),
             json=payload,
-            timeout=300,
+            timeout=(self.handshake_timeout_secs, self.poll_timeout_secs),
             stream=True,
         )
         self._ensure_ok(response, path)
@@ -1741,22 +1752,32 @@ class OpenAIWebImageClient:
                 dl_headers["Authorization"] = f"Bearer {self.access_token}"
                 dl_headers["Referer"] = self.base_url + "/"
 
-            if self._owns_session and requests is not None:
-                dl_kwargs: Dict[str, Any] = {"impersonate": "chrome110", "verify": True}
-                if getattr(self, "proxy_url", ""):
-                    dl_kwargs["proxy"] = self.proxy_url
-                dl_session = requests.Session(**dl_kwargs)
+            def _fetch_download():
+                if self._owns_session and requests is not None:
+                    dl_kwargs: Dict[str, Any] = {"impersonate": "chrome110", "verify": True}
+                    if getattr(self, "proxy_url", ""):
+                        dl_kwargs["proxy"] = self.proxy_url
+                    dl_session = requests.Session(**dl_kwargs)
+                    try:
+                        if is_chatgpt_host and getattr(self.session, "cookies", None):
+                            try:
+                                dl_session.cookies.update(self.session.cookies)
+                            except Exception:
+                                pass
+                        return dl_session.get(safe_url, headers=dl_headers, timeout=120)
+                    finally:
+                        dl_session.close()
+                return self.session.get(safe_url, headers=dl_headers, timeout=120)
+
+            for attempt in range(2):
                 try:
-                    if is_chatgpt_host and getattr(self.session, "cookies", None):
-                        try:
-                            dl_session.cookies.update(self.session.cookies)
-                        except Exception:
-                            pass
-                    resp = dl_session.get(safe_url, headers=dl_headers, timeout=120)
-                finally:
-                    dl_session.close()
-            else:
-                resp = self.session.get(safe_url, headers=dl_headers, timeout=120)
+                    resp = _fetch_download()
+                    break
+                except Exception as exc:
+                    if attempt == 0 and _is_network_error(exc):
+                        time.sleep(1.0)
+                        continue
+                    raise
             self._ensure_ok(resp, "image_download")
             content = bytes(getattr(resp, "content", b"") or b"")
             if not content:
@@ -2050,6 +2071,10 @@ def handle_payload(data: Any, *, session: Any = None) -> Dict[str, Any]:
         if masks and not images:
             raise ImageWorkerError("Mask requires at least one input image", http_status=400, error_code="invalid_request")
         poll_timeout = max(0.05, min(300.0, float(data.get("poll_timeout_secs") or 150.0)))
+        handshake_timeout = max(
+            0.05,
+            min(60.0, float(data.get("handshake_timeout_secs") or 30.0)),
+        )
         initial_wait = max(0.0, min(60.0, float(data.get("initial_wait_secs") if data.get("initial_wait_secs") is not None else 8.0)))
         poll_interval = max(0.05, min(30.0, float(data.get("poll_interval_secs") if data.get("poll_interval_secs") is not None else 6.0)))
         settle_secs = max(0.0, min(10.0, float(data.get("settle_secs") if data.get("settle_secs") is not None else 1.5)))
@@ -2061,6 +2086,7 @@ def handle_payload(data: Any, *, session: Any = None) -> Dict[str, Any]:
             upstream_model=str(data.get("upstream_model") or DEFAULT_UPSTREAM_MODEL).strip(),
             thinking_effort=str(data.get("thinking_effort") or "").strip(),
             session=session,
+            handshake_timeout_secs=handshake_timeout,
             poll_timeout_secs=poll_timeout,
             initial_wait_secs=initial_wait,
             poll_interval_secs=poll_interval,
@@ -2126,6 +2152,13 @@ def handle_payload(data: Any, *, session: Any = None) -> Dict[str, Any]:
                 "http_status": 401,
                 "error_code": "unauthorized",
                 "error": "Access token invalidated",
+            }
+        if _is_network_error(exc):
+            return {
+                "ok": False,
+                "http_status": 504,
+                "error_code": "handshake_timeout" if "timeout" in msg.lower() else "network_error",
+                "error": _sanitize_error_text(msg),
             }
         return {
             "ok": False,

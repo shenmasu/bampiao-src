@@ -231,7 +231,7 @@ class CloudTaskAPI:
         try:
             n = _parse_n(payload.get("n", 1))
             ref_images = _parse_ref_images(payload.get("ref_images"))
-            timeout = _parse_timeout(payload.get("timeout", 180))
+            timeout = _parse_timeout(payload.get("timeout", 300))
         except ValueError as exc:
             return error_response(400, str(exc), "bad_request")
         want_gif = bool(payload.get("gif") or payload.get("anim"))
@@ -313,12 +313,26 @@ class CloudTaskAPI:
             if event.is_set() or not tasks.mark_running(self._db, task_id):
                 return
 
-            last_aid = ""
-            saved = 0
-            for idx in range(n):
-                if event.is_set():
-                    return
-                b64_json, last_aid = self._render(
+            try:
+                key_conc = int(keyrec.get("concurrency", 4))
+            except (TypeError, ValueError):
+                key_conc = 4
+            batch_workers = min(n, key_conc if key_conc > 0 else 4, 4)
+            successes: list[tuple[int, str, str]] = []
+            errors: list[tuple[str, str]] = []
+
+            def render_one(idx: int):
+                def on_attempt(record):
+                    record = dict(record)
+                    record["img_idx"] = idx
+                    tasks.update_task_progress(
+                        self._db,
+                        task_id,
+                        stage=str(record.get("stage") or "retrying"),
+                        attempt_record=record,
+                    )
+
+                return self._render(
                     self.cfg,
                     prompt,
                     timeout=timeout,
@@ -327,22 +341,75 @@ class CloudTaskAPI:
                     keyrec=keyrec,
                     cancel_requested=event.is_set,
                     anim=anim,
+                    total_budget=timeout,
+                    on_attempt=on_attempt,
                 )
-                if event.is_set():
-                    return
-                image = save_b64_image(self.cfg, task_id, idx, b64_json, anim=anim)
-                tasks.add_task_images(self._db, task_id, [image])
-                saved += 1
+
+            with concurrent.futures.ThreadPoolExecutor(
+                max_workers=max(1, int(batch_workers)),
+                thread_name_prefix="bampiao-task-image",
+            ) as image_pool:
+                future_map = {
+                    image_pool.submit(render_one, idx): idx
+                    for idx in range(n)
+                }
+                for future in concurrent.futures.as_completed(future_map):
+                    idx = future_map[future]
+                    if event.is_set():
+                        continue
+                    try:
+                        b64_json, account_id = future.result()
+                        image = save_b64_image(
+                            self.cfg,
+                            task_id,
+                            idx,
+                            b64_json,
+                            anim=anim,
+                        )
+                        tasks.add_task_images(self._db, task_id, [image])
+                        successes.append((idx, account_id, b64_json))
+                        tasks.update_task_progress(
+                            self._db,
+                            task_id,
+                            stage="generating",
+                        )
+                    except Exception as exc:  # noqa: BLE001
+                        errors.append(_failure_fields(exc))
 
             if event.is_set():
                 return
-            self._commit(self.cfg, keyrec, n)
+            saved = len(successes)
+            if not saved:
+                code, reason = errors[0] if errors else ("other", "出图失败")
+                tasks.finish_task(
+                    self._db,
+                    task_id,
+                    ok=False,
+                    error_code=code,
+                    reason=reason,
+                )
+                return
+            successes.sort(key=lambda row: row[0])
+            last_aid = successes[-1][1]
+            self._commit(self.cfg, keyrec, saved)
+            partial = saved < n
+            reason = ""
+            if partial:
+                _code, first_reason = errors[0] if errors else ("other", "上游未返回")
+                reason = "已生成 %d/%d 张，其余 %d 张未完成：%s" % (
+                    saved,
+                    n,
+                    n - saved,
+                    first_reason,
+                )
             tasks.finish_task(
                 self._db,
                 task_id,
                 ok=True,
                 account_id=str(last_aid or ""),
+                reason=reason,
                 image_count=saved,
+                partial=partial,
             )
         except Exception as exc:
             if not event.is_set():
@@ -508,6 +575,7 @@ class CloudTaskAPI:
 
     def _task_view(self, task: dict) -> dict:
         images = tasks.get_task_images(self._db, str(task["id"]))
+        attempts = tasks.get_task_attempts(self._db, str(task["id"]))
         now = time.time()
         started = task.get("started_at")
         finished = task.get("finished_at")
@@ -534,6 +602,18 @@ class CloudTaskAPI:
             }
             for image in images
         ]
+        stage = str(task.get("stage") or "")
+        if not stage:
+            stage = "done" if task["status"] == "done" else (
+                "failed" if task["status"] == "failed" else (
+                    "cancelled" if task["status"] == "cancelled" else task["status"]
+                )
+            )
+        queue_position = (
+            tasks.count_queued_ahead(self._db, str(task["id"])) + 1
+            if task["status"] == "queued"
+            else 0
+        )
         return {
             "object": "task",
             "task_id": task["id"],
@@ -546,6 +626,11 @@ class CloudTaskAPI:
                        else ("png" if image_items else
                              ("gif" if str(task["size"]) == GIF_SIZE_MARKER else "png"))),
             "status": task["status"],
+            "stage": stage,
+            "attempt_count": int(task.get("attempt_count") or 0),
+            "attempts": attempts,
+            "partial": bool(task.get("partial")),
+            "queue_position": queue_position,
             "completed_count": len(images),
             "elapsed_seconds": round(elapsed, 3),
             "reason": task["reason"],

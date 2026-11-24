@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import os
 import secrets
 import sqlite3
@@ -12,7 +13,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Iterable, Iterator, Mapping
 
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 3
 BUSY_TIMEOUT_MS = 5000
 TASK_STATUSES = ("queued", "running", "done", "failed", "cancelled")
 TASK_SOURCES = ("api", "sync", "web")
@@ -103,6 +104,8 @@ def _migrate(conn: sqlite3.Connection) -> None:
                 _migration_1(conn)
             elif next_version == 2:
                 _migration_2(conn)
+            elif next_version == 3:
+                _migration_3(conn)
             conn.execute("PRAGMA user_version=%d" % next_version)
             version = next_version
 
@@ -203,6 +206,84 @@ def _migration_2(conn: sqlite3.Connection) -> None:
     )
 
 
+def _migration_3(conn: sqlite3.Connection) -> None:
+    """Add live scheduling state without rebuilding historical task tables."""
+    columns = {
+        str(row["name"])
+        for row in conn.execute("PRAGMA table_info(tasks)").fetchall()
+    }
+    additions = (
+        ("stage", "TEXT NOT NULL DEFAULT ''"),
+        ("attempt_count", "INTEGER NOT NULL DEFAULT 0"),
+        ("attempts_json", "TEXT NOT NULL DEFAULT '[]'"),
+        ("partial", "INTEGER NOT NULL DEFAULT 0 CHECK (partial IN (0, 1))"),
+    )
+    for name, definition in additions:
+        if name not in columns:
+            conn.execute("ALTER TABLE tasks ADD COLUMN %s %s" % (name, definition))
+
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS account_runtime (
+            account_id TEXT PRIMARY KEY,
+            state TEXT NOT NULL DEFAULT 'stale'
+                CHECK (state IN (
+                    'healthy', 'cooling', 'recovering',
+                    'suspect_dead', 'stale', 'disabled'
+                )),
+            quota INTEGER,
+            quota_at REAL NOT NULL DEFAULT 0,
+            cooldown_until REAL NOT NULL DEFAULT 0,
+            fail_streak INTEGER NOT NULL DEFAULT 0,
+            relogin_fail_streak INTEGER NOT NULL DEFAULT 0,
+            ok_total INTEGER NOT NULL DEFAULT 0,
+            fail_total INTEGER NOT NULL DEFAULT 0,
+            avg_latency REAL NOT NULL DEFAULT 0,
+            health_score REAL NOT NULL DEFAULT 70.0,
+            last_used_at REAL NOT NULL DEFAULT 0,
+            last_ok_at REAL NOT NULL DEFAULT 0,
+            last_probed_at REAL NOT NULL DEFAULT 0,
+            last_error_class TEXT NOT NULL DEFAULT '',
+            last_error TEXT NOT NULL DEFAULT '',
+            updated_at REAL NOT NULL DEFAULT 0
+        )
+        """
+    )
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS account_runtime_state "
+        "ON account_runtime(state, health_score DESC)"
+    )
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS account_runtime_cool "
+        "ON account_runtime(state, cooldown_until)"
+    )
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS probe_runs (
+            id TEXT PRIMARY KEY,
+            mode TEXT NOT NULL,
+            status TEXT NOT NULL
+                CHECK (status IN ('running', 'done', 'stopped', 'failed')),
+            total INTEGER NOT NULL DEFAULT 0,
+            done INTEGER NOT NULL DEFAULT 0,
+            ok_count INTEGER NOT NULL DEFAULT 0,
+            fail_count INTEGER NOT NULL DEFAULT 0,
+            auth_fail_count INTEGER NOT NULL DEFAULT 0,
+            quota_zero_count INTEGER NOT NULL DEFAULT 0,
+            network_fail_count INTEGER NOT NULL DEFAULT 0,
+            current_account TEXT NOT NULL DEFAULT '',
+            started_at REAL NOT NULL,
+            finished_at REAL,
+            log_json TEXT NOT NULL DEFAULT '[]'
+        )
+        """
+    )
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS probe_runs_started "
+        "ON probe_runs(started_at DESC)"
+    )
+
+
 def create_task(
     path: str | Path,
     *,
@@ -281,6 +362,7 @@ def mark_running(
                 UPDATE tasks
                 SET status = 'running',
                     started_at = COALESCE(started_at, ?),
+                    stage = CASE WHEN stage = '' THEN 'connecting' ELSE stage END,
                     account_id = CASE WHEN ? = '' THEN account_id ELSE ? END
                 WHERE id = ? AND status = 'queued'
                 """,
@@ -324,7 +406,7 @@ def cancel_task(
                 """
                 UPDATE tasks
                 SET status = 'cancelled', finished_at = ?,
-                    error_code = 'CANCELLED', reason = ?
+                    error_code = 'CANCELLED', reason = ?, stage = 'cancelled'
                 WHERE id = ? AND status IN ('queued', 'running')
                 """,
                 (finished, message, task_id),
@@ -347,6 +429,7 @@ def finish_task(
     error_code: str = "",
     reason: str = "",
     image_count: int = 0,
+    partial: bool = False,
     date: str | None = None,
     finished_at: float | None = None,
 ) -> bool:
@@ -372,7 +455,7 @@ def finish_task(
                 """
                 UPDATE tasks
                 SET status = ?, finished_at = ?, account_id = ?,
-                    error_code = ?, reason = ?
+                    error_code = ?, reason = ?, stage = ?, partial = ?
                 WHERE id = ? AND status IN ('queued', 'running')
                 """,
                 (
@@ -380,7 +463,9 @@ def finish_task(
                     finished,
                     str(account_id or ""),
                     "" if ok else _short_text(error_code or "TASK_FAILED"),
-                    "" if ok else _short_text(reason),
+                    _short_text(reason) if (not ok or partial) else "",
+                    status,
+                    int(bool(partial and ok)),
                     task_id,
                 ),
             )
@@ -406,6 +491,76 @@ def finish_task(
         conn.close()
 
 
+def update_task_progress(
+    path: str | Path,
+    task_id: str,
+    *,
+    stage: str | None = None,
+    attempt_record: Mapping | None = None,
+) -> bool:
+    """Atomically expose the current stage and one sanitized retry record."""
+    allowed_stages = {
+        "queued", "connecting", "generating", "retrying",
+        "downloading", "done", "failed", "cancelled",
+    }
+    normalized_stage = None if stage is None else str(stage).strip().lower()
+    if normalized_stage and normalized_stage not in allowed_stages:
+        raise ValueError("invalid task stage: %s" % normalized_stage)
+
+    conn = connect(path)
+    try:
+        with _transaction(conn):
+            row = conn.execute(
+                "SELECT status, attempts_json FROM tasks WHERE id = ?", (task_id,)
+            ).fetchone()
+            if row is None or row["status"] not in ("queued", "running"):
+                return False
+            attempts = _load_attempts(row["attempts_json"])
+            if attempt_record is not None:
+                attempts.append(_sanitize_attempt(attempt_record))
+                attempts = attempts[-32:]
+            conn.execute(
+                """
+                UPDATE tasks
+                SET stage = COALESCE(?, stage),
+                    attempt_count = ?,
+                    attempts_json = ?
+                WHERE id = ? AND status IN ('queued', 'running')
+                """,
+                (
+                    normalized_stage,
+                    len(attempts),
+                    json.dumps(attempts, ensure_ascii=False, separators=(",", ":")),
+                    task_id,
+                ),
+            )
+        return True
+    finally:
+        conn.close()
+
+
+def count_queued_ahead(path: str | Path, task_id: str) -> int:
+    """Return how many queued tasks are ahead of this queued task."""
+    conn = connect(path)
+    try:
+        row = conn.execute(
+            "SELECT status, created_at, id FROM tasks WHERE id = ?", (task_id,)
+        ).fetchone()
+        if row is None or row["status"] != "queued":
+            return 0
+        ahead = conn.execute(
+            """
+            SELECT COUNT(*) FROM tasks
+            WHERE status = 'queued'
+              AND (created_at < ? OR (created_at = ? AND id < ?))
+            """,
+            (row["created_at"], row["created_at"], row["id"]),
+        ).fetchone()[0]
+        return int(ahead or 0)
+    finally:
+        conn.close()
+
+
 def get_task(path: str | Path, task_id: str) -> dict | None:
     conn = connect(path)
     try:
@@ -413,6 +568,12 @@ def get_task(path: str | Path, task_id: str) -> dict | None:
         return dict(row) if row is not None else None
     finally:
         conn.close()
+
+
+def get_task_attempts(path: str | Path, task_id: str) -> list[dict]:
+    """Return only sanitized scheduling attempts for an owned task."""
+    task = get_task(path, task_id)
+    return [] if task is None else _load_attempts(task.get("attempts_json"))
 
 
 def list_tasks(
@@ -633,7 +794,7 @@ def recover_interrupted_tasks(
                 """
                 UPDATE tasks
                 SET status = 'failed', finished_at = ?,
-                    error_code = 'SERVICE_RESTART', reason = ?
+                    error_code = 'SERVICE_RESTART', reason = ?, stage = 'failed'
                 WHERE status IN ('queued', 'running')
                 """,
                 (finished, _short_text(reason)),
@@ -687,6 +848,28 @@ def _validated_date(value: str) -> str:
         return date_type.fromisoformat(str(value)).isoformat()
     except ValueError as exc:
         raise ValueError("date must be YYYY-MM-DD") from exc
+
+
+def _load_attempts(value) -> list[dict]:
+    try:
+        rows = json.loads(str(value or "[]"))
+    except (TypeError, ValueError):
+        return []
+    return [row for row in rows if isinstance(row, dict)][-32:]
+
+
+def _sanitize_attempt(record: Mapping) -> dict:
+    allowed = (
+        "attempt", "img_idx", "account_id", "stage", "ok",
+        "error_class", "error_code", "error", "elapsed_s", "ts",
+    )
+    result = {}
+    for key in allowed:
+        if key not in record:
+            continue
+        value = record.get(key)
+        result[key] = _short_text(value)[:300] if isinstance(value, str) else value
+    return result
 
 
 def _short_text(value) -> str:

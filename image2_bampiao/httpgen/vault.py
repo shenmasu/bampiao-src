@@ -16,6 +16,9 @@ import os
 import sys
 import time
 from pathlib import Path
+from typing import Iterable
+
+from .. import locks
 
 DESC = "bampiao-http-accounts"
 VALID_GROUPS = ("free", "plus", "pro")
@@ -195,8 +198,12 @@ class Vault:
             return []
 
     def _write_all(self, accounts: list[dict]) -> None:
+        with self._exclusive():
+            self._write_path(self.path, accounts)
+
+    def _write_path(self, path: Path, accounts: list[dict]) -> None:
         try:
-            self.path.parent.mkdir(parents=True, exist_ok=True)
+            path.parent.mkdir(parents=True, exist_ok=True)
         except FileExistsError:
             # 某些机器上 state 可能是已存在的 junction/特殊目录，exist_ok 仍抛 183；目录在就行
             pass
@@ -204,9 +211,24 @@ class Vault:
                              ensure_ascii=False).encode("utf-8")
         blob, enc = self._blob_enc(payload)
         doc = {"version": 1, "enc": enc, "blob": blob}
-        tmp = self.path.with_suffix(".json.tmp")
+        tmp = path.with_suffix(path.suffix + ".tmp")
         tmp.write_text(json.dumps(doc), encoding="utf-8")
-        tmp.replace(self.path)
+        try:
+            os.chmod(tmp, 0o600)
+        except OSError:
+            pass
+        tmp.replace(path)
+        try:
+            os.chmod(path, 0o600)
+        except OSError:
+            pass
+
+    def _exclusive(self):
+        return locks.exclusive(
+            self.path.with_suffix(".lock"),
+            timeout=15,
+            what="HTTP 号池凭证库",
+        )
 
     # ---- 账号
     def load(self) -> list[dict]:
@@ -228,52 +250,134 @@ class Vault:
     def upsert(self, *, email: str, password: str, totp: str = "", proxy: str = "",
                name: str = "") -> tuple[dict, bool]:
         """新增或更新一个号。返回 (账号dict, 是否新建)。"""
-        accs = self._read_all()
-        aid = account_id_for(email)
-        now = time.time()
-        for a in accs:
-            if a.get("id") == aid:
-                a["email"] = email
-                a["password"] = password
-                if totp:
-                    a["totp"] = totp
-                if proxy:
-                    a["proxy"] = proxy
-                if name:
-                    a["name"] = name
-                a["updated_at"] = now
-                self._write_all(accs)
-                return _with_group(a), False
-        acc = {
-            "id": aid, "email": email, "name": name or _mask_email(email),
-            "password": password, "totp": totp, "proxy": proxy,
-            "access_token": "", "refresh_token": "", "token_exp": 0,
-            "plan": "", "group": "free", "group_locked": False,
-            "created_at": now, "updated_at": now,
-            "last_ok_at": 0, "last_error": "", "enabled": True,
-        }
-        accs.append(acc)
-        self._write_all(accs)
-        return _with_group(acc), True
+        with self._exclusive():
+            accs = self._read_all()
+            aid = account_id_for(email)
+            now = time.time()
+            for a in accs:
+                if a.get("id") == aid:
+                    a["email"] = email
+                    a["password"] = password
+                    if totp:
+                        a["totp"] = totp
+                    if proxy:
+                        a["proxy"] = proxy
+                    if name:
+                        a["name"] = name
+                    a["updated_at"] = now
+                    self._write_path(self.path, accs)
+                    return _with_group(a), False
+            acc = {
+                "id": aid, "email": email, "name": name or _mask_email(email),
+                "password": password, "totp": totp, "proxy": proxy,
+                "access_token": "", "refresh_token": "", "token_exp": 0,
+                "plan": "", "group": "free", "group_locked": False,
+                "created_at": now, "updated_at": now,
+                "last_ok_at": 0, "last_error": "", "enabled": True,
+            }
+            accs.append(acc)
+            self._write_path(self.path, accs)
+            return _with_group(acc), True
 
     def update(self, account_id: str, **fields) -> None:
-        accs = self._read_all()
-        for a in accs:
-            if a.get("id") == account_id:
-                a.update(fields)
-                a["updated_at"] = time.time()
-                break
-        else:
-            return
-        self._write_all(accs)
+        with self._exclusive():
+            accs = self._read_all()
+            for a in accs:
+                if a.get("id") == account_id:
+                    a.update(fields)
+                    a["updated_at"] = time.time()
+                    break
+            else:
+                return
+            self._write_path(self.path, accs)
 
     def delete(self, account_id: str) -> bool:
-        accs = self._read_all()
-        kept = [a for a in accs if a.get("id") != account_id]
-        if len(kept) == len(accs):
-            return False
-        self._write_all(kept)
-        return True
+        with self._exclusive():
+            accs = self._read_all()
+            kept = [a for a in accs if a.get("id") != account_id]
+            if len(kept) == len(accs):
+                return False
+            self._write_path(self.path, kept)
+            return True
+
+    def bulk_upsert(self, records: Iterable[dict]) -> tuple[int, int]:
+        """Insert or update a batch while holding one cross-process write lock."""
+        rows = [dict(record) for record in records if str(record.get("email") or "")]
+        added = updated = 0
+        now = time.time()
+        with self._exclusive():
+            accounts = self._read_all()
+            by_id = {str(account.get("id") or ""): account for account in accounts}
+            for record in rows:
+                email = str(record.get("email") or "").strip()
+                account_id = account_id_for(email)
+                account = by_id.get(account_id)
+                if account is None:
+                    account = {
+                        "id": account_id,
+                        "email": email,
+                        "name": record.get("name") or _mask_email(email),
+                        "password": "",
+                        "totp": "",
+                        "proxy": record.get("proxy") or "",
+                        "access_token": "",
+                        "refresh_token": "",
+                        "token_exp": 0,
+                        "plan": "",
+                        "group": "free",
+                        "group_locked": False,
+                        "created_at": now,
+                        "updated_at": now,
+                        "last_ok_at": 0,
+                        "last_error": "",
+                        "enabled": True,
+                    }
+                    accounts.append(account)
+                    by_id[account_id] = account
+                    added += 1
+                else:
+                    updated += 1
+                allowed = (
+                    "email", "name", "password", "totp", "proxy",
+                    "access_token", "refresh_token", "token_exp", "plan",
+                    "group", "group_locked", "enabled", "last_ok_at",
+                    "last_error", "cooldown_until", "quota", "quota_at",
+                )
+                for key in allowed:
+                    if key in record:
+                        account[key] = record[key]
+                account["email"] = email
+                account["updated_at"] = now
+            if rows:
+                self._write_path(self.path, accounts)
+        return added, updated
+
+    def bulk_delete(
+        self,
+        account_ids: Iterable[str],
+        *,
+        archive_dir: str | Path | None = None,
+    ) -> tuple[int, Path | None]:
+        """Archive matching encrypted records before deleting them atomically."""
+        wanted = {str(value) for value in account_ids if str(value)}
+        if not wanted:
+            return 0, None
+        with self._exclusive():
+            accounts = self._read_all()
+            removed = [account for account in accounts if account.get("id") in wanted]
+            if not removed:
+                return 0, None
+            archive_path = None
+            if archive_dir is not None:
+                folder = Path(archive_dir)
+                folder.mkdir(parents=True, exist_ok=True)
+                archive_path = folder / ("removed-%d.json" % int(time.time() * 1000))
+                self._write_path(archive_path, removed)
+                if not archive_path.is_file() or archive_path.stat().st_size <= 0:
+                    raise OSError("号池归档写入失败，未删除主库")
+            kept = [account for account in accounts if account.get("id") not in wanted]
+            self._write_path(self.path, kept)
+            return len(removed), archive_path
 
     def set_token(self, account_id: str, access_token: str, refresh_token: str = "",
                   expires_in=None) -> None:
@@ -293,19 +397,20 @@ class Vault:
         if target not in VALID_GROUPS:
             raise ValueError("group 必须是 free、plus 或 pro")
         wanted = {ids} if isinstance(ids, str) else set(ids or [])
-        accs = self._read_all()
-        changed = 0
-        now = time.time()
-        for account in accs:
-            if account.get("id") not in wanted:
-                continue
-            account["group"] = target
-            account["group_locked"] = True
-            account["updated_at"] = now
-            changed += 1
-        if changed:
-            self._write_all(accs)
-        return changed
+        with self._exclusive():
+            accs = self._read_all()
+            changed = 0
+            now = time.time()
+            for account in accs:
+                if account.get("id") not in wanted:
+                    continue
+                account["group"] = target
+                account["group_locked"] = True
+                account["updated_at"] = now
+                changed += 1
+            if changed:
+                self._write_path(self.path, accs)
+            return changed
 
     # ---- 面板用：脱敏
     def public_list(self) -> list[dict]:

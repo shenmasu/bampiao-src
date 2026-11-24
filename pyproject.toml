@@ -43,7 +43,7 @@ bampiao-desktop = "image2_bampiao.desktop:main"
 
 [project.urls]
 Homepage = "https://hezhuzi.com/lab/bampiao/"
-Repository = "https://github.com/shenmasu/bampiao-src"
+Repository = "https://github.com/shenmasu/bampiao-src.git"
 Changelog = "https://hezhuzi.com/lab/bampiao/#log"
 
 [tool.setuptools]

@@ -163,7 +163,8 @@ def run_image(access_token: str, prompt: str, *, model: str = "gpt-image-2",
               background: str = "", frame_count=None, frame_duration_ms=None,
               images: list | None = None, masks: list | None = None, proxy: str = "",
               upstream_model: str = "", thinking_effort: str = "",
-              timeout: float = DEFAULT_IMAGE_TIMEOUT) -> dict:
+              timeout: float = DEFAULT_IMAGE_TIMEOUT,
+              handshake_timeout: float = 18.0) -> dict:
     payload = _image_payload(access_token, prompt, model, size, quality, output_format,
                              background, frame_count, frame_duration_ms, images, masks,
                              proxy, upstream_model, thinking_effort)
@@ -171,6 +172,12 @@ def run_image(access_token: str, prompt: str, *, model: str = "gpt-image-2",
         payload["poll_timeout_secs"] = float(min(300.0, max(1.0, timeout)))
     except Exception:
         pass
+    try:
+        payload["handshake_timeout_secs"] = float(
+            min(60.0, max(1.0, handshake_timeout))
+        )
+    except Exception:
+        payload["handshake_timeout_secs"] = 18.0
     if _FROZEN:
         try:
             _ensure_vendor_on_path()
@@ -179,7 +186,11 @@ def run_image(access_token: str, prompt: str, *, model: str = "gpt-image-2",
             return r if isinstance(r, dict) else {"ok": False, "error_code": "image_worker_error", "error": "bad result"}
         except Exception as e:  # noqa: BLE001
             return {"ok": False, "error_code": "image_worker_error", "error": str(e)}
-    return _run_worker(IMAGE_WORKER, payload, timeout)
+    worker_timeout = max(
+        float(timeout) + 20.0,
+        float(handshake_timeout) + float(timeout) + 15.0,
+    )
+    return _run_worker(IMAGE_WORKER, payload, worker_timeout)
 
 
 def run_quota(access_token: str, *, proxy: str = "",

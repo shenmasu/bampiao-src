@@ -83,7 +83,7 @@ def import_text(vault: Vault, text: str, *, proxy: str = "",
 
 
 def ensure_token(vault: Vault, account_id: str, *, force: bool = False,
-                 skew: int = 120) -> dict:
+                 skew: int = 120, allow_login: bool = True) -> dict:
     """确保这个号有可用 access_token；必要时用存着的密码+2FA 重新登录。
 
     返回 {"ok":bool, "access_token":str, "error":str}
@@ -96,6 +96,11 @@ def ensure_token(vault: Vault, account_id: str, *, force: bool = False,
     expired = exp and exp <= int(time.time()) + skew
     if tok and not expired and not force:
         return {"ok": True, "access_token": tok}
+    if not allow_login:
+        if tok:
+            return {"ok": True, "access_token": tok}
+        return {"ok": False, "error_code": "auth_required_fast",
+                "error": "没有现成 token，已交给后台自救"}
     r = worker.run_auth(acc.get("email") or "", acc.get("password") or "",
                         acc.get("totp") or "", proxy=acc.get("proxy") or "")
     if not r.get("ok"):
