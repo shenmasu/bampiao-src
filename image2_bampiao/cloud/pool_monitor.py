@@ -258,7 +258,7 @@ def _process_recovery(cfg) -> bool:
 def monitor_loop(cfg, stop_event: threading.Event) -> None:
     next_wake = 0.0
     next_recover = 0.0
-    last_daily = ""
+    last_daily = _last_daily_scan_date(cfg)
     while not stop_event.wait(1.0):
         now = time.monotonic()
         if now >= next_wake:
@@ -303,6 +303,19 @@ def monitor_loop(cfg, stop_event: threading.Event) -> None:
                 last_daily = day
             except Exception:
                 pass
+
+
+def _last_daily_scan_date(cfg) -> str:
+    latest = runtime_pool.latest_probe_run(
+        _db_path(cfg),
+        modes=("daily_auto",),
+    )
+    if not latest or not latest.get("started_at"):
+        return ""
+    return datetime.fromtimestamp(
+        float(latest["started_at"]),
+        tz=_SHANGHAI_TZ,
+    ).strftime("%Y-%m-%d")
 
 
 def start_pool_monitor(cfg) -> threading.Thread | None:
