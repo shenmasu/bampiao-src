@@ -317,6 +317,10 @@ class Panel:
                 # 引导做完了没有，存在磁盘上而不是浏览器 localStorage：
                 # 窗口是 WebView2，默认无痕，localStorage 关一次就清——于是每次都从头引导
                 "onboarded": self._ui_flag("onboarded"),
+                "announcement": {
+                    "id": "0.2.78-cloud-migration",
+                    "show": not self._ui_flag("announcement_0_2_78_dismissed"),
+                },
                 # 设置页要显示"现在选的是哪种策略"，得一起给出当前值
                 "account_strategy": getattr(self._cfg(), "account_strategy", "balance"),
                 "account_fixed_id": getattr(self._cfg(), "account_fixed_id", ""),
@@ -573,6 +577,36 @@ class Panel:
         if do == "onboarded":
             self._set_ui_flag("onboarded", True)
             return {"ok": True}
+        if do == "announcement_0_2_78_dismiss":
+            self._set_ui_flag("announcement_0_2_78_dismissed", True)
+            return {"ok": True}
+        if do == "cleanup_plan":
+            from ..cli import cleanup_plan
+
+            return cleanup_plan(data_dir=Path(self.cfg.data_dir),
+                                config_path=self.cfg.path)
+        if do == "cleanup_run":
+            from ..cli import run_cleanup
+
+            group = str(body.get("group") or "").strip()
+            groups = [group] if group in ("ai", "autostart", "process") else None
+            return run_cleanup(dry_run=False, groups=groups,
+                               config_path=self.cfg.path,
+                               data_dir=Path(self.cfg.data_dir))
+        if do == "uninstall_help":
+            from ..cli import cleanup_uninstall_help
+
+            return {"ok": True, **cleanup_uninstall_help()}
+        if do == "uninstall_open":
+            if sys.platform != "win32":
+                return {"ok": False, "why": "macOS 请按面板里的步骤卸载"}
+            try:
+                subprocess.Popen(
+                    ["control.exe", "appwiz.cpl"],
+                    creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+                return {"ok": True}
+            except OSError as e:
+                return {"ok": False, "why": str(e)}
         if do == "pause":
             self.store.set_paused(True, by="ui", reason=str(body.get("reason") or ""))
             return {"ok": True, "paused": True}

@@ -20,6 +20,11 @@ from pathlib import Path
 
 RUN_KEY = r"Software\Microsoft\Windows\CurrentVersion\Run"
 VALUE_NAME = "Bampiao"
+SCHEDULED_TASKS = (
+    "BampiaoGateway",
+    "BampiaoWatchdog",
+    "BampiaoFeedbackSentinel",
+)
 
 # macOS：LaunchAgent 的 label 和路径
 MAC_LABEL = "com.hezhuzi.bampiao"
@@ -216,3 +221,106 @@ def status(*, run_key: str = RUN_KEY, value: str = VALUE_NAME) -> dict:
         target = str(raw).split(" ", 1)[0]
     return {"enabled": True, "command": str(raw),
             "target": target, "exists": Path(target).exists()}
+
+
+def _scheduled_task_exists(name: str) -> bool:
+    if sys.platform != "win32":
+        return False
+    try:
+        r = subprocess.run(
+            ["schtasks", "/Query", "/TN", name],
+            capture_output=True, timeout=10,
+            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+        return r.returncode == 0
+    except (OSError, subprocess.SubprocessError):
+        return False
+
+
+def _remove_scheduled_task(name: str) -> bool:
+    if sys.platform != "win32":
+        return True
+    try:
+        r = subprocess.run(
+            ["schtasks", "/Delete", "/TN", name, "/F"],
+            capture_output=True, timeout=15,
+            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+        return r.returncode == 0 or not _scheduled_task_exists(name)
+    except (OSError, subprocess.SubprocessError):
+        return False
+
+
+def inspect_cleanup_targets() -> list[dict]:
+    """列出清理解除自启时需要处理的项，不修改系统。"""
+    rows: list[dict] = []
+    if sys.platform == "darwin":
+        rows.append({
+            "kind": "launchagent",
+            "name": MAC_LABEL,
+            "path": str(MAC_PLIST),
+            "present": MAC_PLIST.exists(),
+        })
+        return rows
+
+    try:
+        run = status()
+    except (NotImplementedError, OSError):
+        run = {"enabled": False}
+    rows.append({
+        "kind": "run",
+        "name": VALUE_NAME,
+        "path": RUN_KEY,
+        "present": bool(run.get("enabled")),
+    })
+    for name in SCHEDULED_TASKS:
+        rows.append({
+            "kind": "task",
+            "name": name,
+            "path": name,
+            "present": _scheduled_task_exists(name),
+        })
+    return rows
+
+
+def remove_all(*, dry_run: bool = False) -> dict:
+    """移除半瓢登记过或历史版本可能留下的开机自启。
+
+    只碰下方明确列出的 Run 项、计划任务和 LaunchAgent；不按模糊名称扫描，
+    避免误删用户自己的任务。
+    """
+    before = inspect_cleanup_targets()
+    if dry_run:
+        return {"ok": True, "dry_run": True, "targets": before, "removed": []}
+
+    removed: list[str] = []
+    failed: list[str] = []
+    if sys.platform == "darwin":
+        had = before[0]["present"] if before else MAC_PLIST.exists()
+        if _mac_disable():
+            removed.append(MAC_LABEL)
+        elif had and MAC_PLIST.exists():
+            failed.append(MAC_LABEL)
+    else:
+        if before and before[0]["present"]:
+            if disable():
+                removed.append(VALUE_NAME)
+            elif status().get("enabled"):
+                failed.append(VALUE_NAME)
+        for name in SCHEDULED_TASKS:
+            present = next((x["present"] for x in before
+                            if x["kind"] == "task" and x["name"] == name), False)
+            if not present:
+                continue
+            if _remove_scheduled_task(name):
+                removed.append(name)
+            elif _scheduled_task_exists(name):
+                failed.append(name)
+
+    after = inspect_cleanup_targets()
+    return {
+        "ok": not failed,
+        "dry_run": False,
+        "targets": before,
+        "removed": removed,
+        "failed": failed,
+        "remaining": [x for x in after if x["present"]],
+    }

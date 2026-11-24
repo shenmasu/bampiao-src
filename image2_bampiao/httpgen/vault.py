@@ -18,6 +18,7 @@ import time
 from pathlib import Path
 
 DESC = "bampiao-http-accounts"
+VALID_GROUPS = ("free", "plus", "pro")
 
 
 # ------------------------------------------------------------------ DPAPI
@@ -124,6 +125,30 @@ def _mask_email(email: str) -> str:
     return name[:2] + "***@" + dom
 
 
+def group_for_plan(plan: object) -> str:
+    """把探测到的订阅档位归一为号池分组；未知/空值按 free 处理。"""
+    value = str(plan or "").strip().lower()
+    return value if value in ("plus", "pro") else "free"
+
+
+def account_group(account: dict) -> str:
+    """读账号分组。
+
+    管理员通过 set_group 写入 group + group_locked；锁定值优先，后续探测只改 plan，
+    不会覆盖手工分组。老记录没有 group 字段时，按 plan 即时推导，无需先迁移。
+    """
+    if account.get("group_locked") and account.get("group") in VALID_GROUPS:
+        return str(account["group"])
+    return group_for_plan(account.get("plan"))
+
+
+def _with_group(account: dict) -> dict:
+    out = dict(account)
+    out["group"] = account_group(account)
+    out["group_locked"] = bool(account.get("group_locked"))
+    return out
+
+
 # ------------------------------------------------------------------ Vault
 class Vault:
     def __init__(self, path: str | Path):
@@ -185,19 +210,19 @@ class Vault:
 
     # ---- 账号
     def load(self) -> list[dict]:
-        return self._read_all()
+        return [_with_group(a) for a in self._read_all()]
 
     def get(self, account_id: str) -> dict | None:
         for a in self._read_all():
             if a.get("id") == account_id:
-                return a
+                return _with_group(a)
         return None
 
     def find_by_email(self, email: str) -> dict | None:
         norm = (email or "").strip().lower()
         for a in self._read_all():
             if (a.get("email") or "").lower() == norm:
-                return a
+                return _with_group(a)
         return None
 
     def upsert(self, *, email: str, password: str, totp: str = "", proxy: str = "",
@@ -218,17 +243,18 @@ class Vault:
                     a["name"] = name
                 a["updated_at"] = now
                 self._write_all(accs)
-                return a, False
+                return _with_group(a), False
         acc = {
             "id": aid, "email": email, "name": name or _mask_email(email),
             "password": password, "totp": totp, "proxy": proxy,
             "access_token": "", "refresh_token": "", "token_exp": 0,
-            "plan": "", "created_at": now, "updated_at": now,
+            "plan": "", "group": "free", "group_locked": False,
+            "created_at": now, "updated_at": now,
             "last_ok_at": 0, "last_error": "", "enabled": True,
         }
         accs.append(acc)
         self._write_all(accs)
-        return acc, True
+        return _with_group(acc), True
 
     def update(self, account_id: str, **fields) -> None:
         accs = self._read_all()
@@ -261,15 +287,37 @@ class Vault:
                     refresh_token=refresh_token or "", token_exp=exp,
                     last_ok_at=time.time(), last_error="")
 
+    def set_group(self, ids, group: str) -> int:
+        """批量设置并锁住管理员分组，返回实际更新的账号数。"""
+        target = str(group or "").strip().lower()
+        if target not in VALID_GROUPS:
+            raise ValueError("group 必须是 free、plus 或 pro")
+        wanted = {ids} if isinstance(ids, str) else set(ids or [])
+        accs = self._read_all()
+        changed = 0
+        now = time.time()
+        for account in accs:
+            if account.get("id") not in wanted:
+                continue
+            account["group"] = target
+            account["group_locked"] = True
+            account["updated_at"] = now
+            changed += 1
+        if changed:
+            self._write_all(accs)
+        return changed
+
     # ---- 面板用：脱敏
     def public_list(self) -> list[dict]:
         out = []
-        for a in self._read_all():
+        for a in self.load():
             out.append({
                 "id": a.get("id"),
                 "email": a.get("email") or "",
                 "name": a.get("name") or _mask_email(a.get("email") or ""),
                 "plan": a.get("plan") or "",
+                "group": a.get("group") or "free",
+                "group_locked": bool(a.get("group_locked")),
                 "proxy": a.get("proxy") or "",
                 "enabled": bool(a.get("enabled", True)),
                 "has_token": bool(a.get("access_token")),

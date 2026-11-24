@@ -8,7 +8,7 @@
 ; - 卸载时把 PATH 里那一项删掉，不留垃圾。
 
 #define MyAppName "半瓢"
-#define MyAppVersion "0.2.77"
+#define MyAppVersion "0.2.78"
 #define MyAppPublisher "鹤竹子"
 #define MyAppExeName "bampiao-desktop.exe"
 #define MyAppCli "bampiao.exe"
@@ -105,7 +105,7 @@ Filename: "{app}\{#MyAppExeName}"; Flags: nowait; Check: WizardSilent
 [UninstallRun]
 ; 半瓢开着时卸载，exe 和 _internal 被占着删不掉，卸载器还不报错（约 190MB 残留，评审实测）。
 ; 先让它自己退出（会顺带收掉账号浏览器）。
-Filename: "{app}\{#MyAppCli}"; Parameters: "quit"; Flags: runhidden waituntilterminated skipifdoesntexist; RunOnceId: "StopBampiao"
+Filename: "{app}\{#MyAppCli}"; Parameters: "cleanup --silent"; Flags: runhidden waituntilterminated skipifdoesntexist; RunOnceId: "CleanupBampiao"
 
 [UninstallDelete]
 ; 2026-11-04：这里原来有一条 `Type: filesandordirs; Name: "{app}"`，把安装目录整棵删掉。

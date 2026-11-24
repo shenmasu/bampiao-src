@@ -479,8 +479,45 @@ FILE_INPUT_SEL = 'input[type=file][accept="image/*"][multiple]'
 
 
 async def _pick_input(pg):
-    """页面上有 4 个 file input，只有『image/* 且 multiple』那个接的是正常的附件上传流程。
-    用 .first 会拿到只收单图的隐藏框，setInputFiles 直接超时——这就是长期以来上传失败的原因。"""
+    """挑出『image/* 且 multiple』那个 file input —— 只有它接的是正常的附件上传流程。
+
+    坑（2026-11-20 定位）：新建会话的过渡期，页面会**同时存在两个 form**
+    （一个高度为 0 的隐藏旧首页 composer + 一个可见的新会话 composer），
+    每个 form 各带 4 个 file input，一共 8 个。此时用 `loc.first` 会拿到
+    **隐藏 form 里的**那个 input：setInputFiles 不报错，但预览渲染到可见 form，
+    而老的 _composer_counts 又只数第一个 form，于是永远数不到 → 误判「没附上」。
+    这里显式优先取**可见 form 内**的 input，退不到再退回全局 .first。
+    """
+    # 优先：可见 form（高度>0）里的目标 input
+    try:
+        js = """(sel) => {
+            const forms = [...document.querySelectorAll('form')];
+            for (const f of forms) {
+                const r = f.getBoundingClientRect();
+                if (r.height > 0 && r.width > 0) {
+                    const el = f.querySelector(sel);
+                    if (el) return true;
+                }
+            }
+            return false;
+        }"""
+        for sel in (FILE_INPUT_SEL,
+                    'input[type=file][accept*="image"]',
+                    'input[type=file]'):
+            if await pg.evaluate(js, sel):
+                loc = pg.locator(sel)
+                # 在这些里找到属于可见 form 的第一个
+                cnt = await loc.count()
+                for i in range(cnt):
+                    el = loc.nth(i)
+                    visible = await el.evaluate(
+                        "el=>{const f=el.closest('form'); if(!f) return false;"
+                        "const r=f.getBoundingClientRect(); return r.height>0&&r.width>0;}")
+                    if visible:
+                        return el, sel
+    except Exception:
+        pass
+    # 退路：全局 .first（单 form 的正常态走这里）
     for sel in (FILE_INPUT_SEL,
                 'input[type=file][accept*="image"]',
                 'input[type=file]'):
@@ -504,22 +541,37 @@ def _cdp_up(port):
 
 
 async def _composer_counts(pg):
-    """数输入框里的附件，返回三种口径。
+    """数输入框里的附件，返回三种口径（blob / chips / all）。
 
     只用 blob: 一种口径太脆：上传完成后缩略图的 src 可能被换成别的协议，
     计数就会从 3 掉到 0/1，于是「明明挂上了却判数量不足」（R158 就是这么失败的）。
     这里同时数 blob 图、附件块、以及 form 内所有图，任一口径达标即可。
+
+    坑（2026-11-20 定位：--ref 上传必判失败的真凶）：新建会话过渡期页面上会
+    **同时有两个 form**（一个高度为 0 的隐藏旧首页 composer + 一个可见的新会话
+    composer）。附件其实挂在可见的那个上，但旧代码 `document.querySelector('form')`
+    永远只取第一个（隐藏的），imgs 恒为 0 → 每次都判「没出现预览」→ 重试 3 次放弃。
+    修复：优先只统计**可见 form**（高度>0 且宽度>0）；没有可见 form 时退回全部 form 汇总。
     """
     try:
         return await pg.evaluate("""() => {
-            const form = document.querySelector('form');
-            if (!form) return {blob: 0, chips: 0, all: 0};
-            const imgs = [...form.querySelectorAll('img')];
-            const blob = imgs.filter(x => (x.src || '').startsWith('blob:')).length;
-            const chips = form.querySelectorAll(
-                '[data-testid*="attach"], [class*="attach"], [aria-label*="移除"], [aria-label*="Remove"]'
-            ).length;
-            return {blob: blob, chips: Math.min(chips, imgs.length || chips), all: imgs.length};
+            const forms = [...document.querySelectorAll('form')];
+            if (!forms.length) return {blob: 0, chips: 0, all: 0};
+            let scope = forms.filter(f => {
+                const r = f.getBoundingClientRect();
+                return r.height > 0 && r.width > 0;
+            });
+            if (!scope.length) scope = forms;   // 没有可见 form 时退回全部
+            let blob = 0, chips = 0, all = 0;
+            for (const f of scope) {
+                const imgs = [...f.querySelectorAll('img')];
+                blob += imgs.filter(x => (x.src || '').startsWith('blob:')).length;
+                all += imgs.length;
+                chips += f.querySelectorAll(
+                    '[data-testid*="attach"], [class*="attach"], [aria-label*="移除"], [aria-label*="Remove"]'
+                ).length;
+            }
+            return {blob: blob, chips: Math.min(chips, all || chips), all: all};
         }""")
     except Exception:
         return {"blob": 0, "chips": 0, "all": 0}

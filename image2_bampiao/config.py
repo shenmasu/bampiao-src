@@ -67,6 +67,10 @@ class Config:
     path: Path
     data_dir: Path
     concurrency: int = 2
+    # 云端共享网关保护：所有密钥共享的请求上限，以及单个 HTTP 账号同时处理数。
+    # 0=不限只用于密钥自身的 daily_limit/concurrency，不用于这两个保护值。
+    gateway_global_concurrency: int = 8
+    gateway_account_concurrency: int = 1
     idle_recycle_min: int = 10
     # 多账号时怎么挑：balance 用得少的优先 / roundrobin 轮流 / fixed 固定最近用过的
     account_strategy: str = "balance"
@@ -172,6 +176,14 @@ def parse(raw: dict, path: Path) -> Config:
         raise ConfigError("http_pool 必须是表（[http_pool]），收到 %r。" % (http_pool,))
     http_pool_enabled = bool(http_pool.get("enabled", False))
 
+    gateway = raw.get("gateway") or {}
+    if not isinstance(gateway, dict):
+        raise ConfigError("gateway 必须是表（[gateway]），收到 %r。" % (gateway,))
+    gateway_global_concurrency = _int_in(
+        gateway.get("global_concurrency", 8), 1, 1000, "gateway.global_concurrency")
+    gateway_account_concurrency = _int_in(
+        gateway.get("account_concurrency", 1), 1, 1000, "gateway.account_concurrency")
+
     accounts_raw = raw.get("accounts") or []
     if not isinstance(accounts_raw, list):
         raise ConfigError("accounts 必须是数组（[[accounts]]）。")
@@ -228,6 +240,8 @@ def parse(raw: dict, path: Path) -> Config:
     concurrency = _int_in(raw.get("concurrency", default_conc), 1, cap, "concurrency")
 
     return Config(path=path, data_dir=data_dir, concurrency=concurrency,
+                  gateway_global_concurrency=gateway_global_concurrency,
+                  gateway_account_concurrency=gateway_account_concurrency,
                   idle_recycle_min=idle, account_strategy=strategy,
                   account_fixed_id=fixed_id,
                   ui_port=ui_port, accounts=accounts,
@@ -257,6 +271,12 @@ port = 0
 [notify]
 desktop = true
 webhook_enabled = false
+
+[gateway]
+# 云端共享网关：所有密钥合计同时在飞的请求数，默认 8。
+global_concurrency = 8
+# 单个 HTTP 账号同时处理数，默认 1（同号并发会串图或失败）。
+account_concurrency = 1
 """
 
 

@@ -60,7 +60,7 @@ aside.side{width:184px;flex:none;background:var(--side);border-right:1px solid v
 .qnums{display:grid;grid-template-columns:1fr 1fr 1fr;gap:4px;margin:8px 0 12px;text-align:center}
 .qnums b{display:block;font:700 20px/1.25 var(--mono);color:var(--ink)}
 .qnums span{font-size:12px}
-.slinks{display:flex;gap:12px}
+.slinks{display:flex;gap:8px 12px;flex-wrap:wrap}
 .lk{border:0;background:none;padding:0;color:var(--dim);font-size:12.5px;text-decoration:underline;
   text-decoration-color:var(--line2);text-underline-offset:3px}
 .lk:hover{color:var(--zhu);text-decoration-color:var(--zhu)}
@@ -632,6 +632,57 @@ body{font:14px/1.7 var(--sans)}
 .accs.dense .acc .nm{font-size:15px}
 .accs.dense .acc .say{font-size:12px}
 .accH .nm{white-space:normal;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;word-break:break-word}
+
+/* 0.2.78：公告、迁移向导与卸载帮助 */
+.cloudMask{position:fixed;inset:0;z-index:220;background:rgba(34,31,26,.42);
+  display:flex;align-items:center;justify-content:center;padding:22px}
+.cloudSheet{width:min(760px,100%);max-height:calc(100vh - 44px);overflow:auto;
+  background:var(--paper);border:1px solid var(--ink);box-shadow:8px 8px 0 rgba(34,31,26,.16);
+  padding:24px 26px 22px;position:relative}
+.cloudSheet.wide{width:min(900px,100%)}
+.cloudClose{position:absolute;right:14px;top:12px;width:32px;height:32px;border:1px solid var(--line2);
+  background:var(--sheet);font:22px/28px var(--sans);padding:0;color:var(--dim)}
+.cloudKicker{font:12px/1 var(--mono);letter-spacing:1.4px;color:var(--qing);margin-bottom:12px}
+.cloudSheet h2{margin:0;font:700 25px/1.35 var(--serif);letter-spacing:1px;max-width:620px}
+.cloudLead{margin:8px 0 18px;color:var(--ink2);font-size:14px;line-height:1.8;max-width:660px}
+.cloudPoints{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.cloudPoint{border:1px solid var(--line);background:var(--sheet);padding:13px 14px}
+.cloudPoint b{display:block;font:600 14px/1.5 var(--serif);margin-bottom:3px}
+.cloudPoint span{display:block;color:var(--dim);font-size:12.5px;line-height:1.7}
+.cloudActions{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-top:18px}
+.cloudActions .btn{text-decoration:none;display:inline-flex;align-items:center;justify-content:center}
+.cloudNoMore{display:flex;align-items:center;gap:7px;margin-left:auto;color:var(--dim);font-size:12.5px}
+.cloudNoMore input{accent-color:var(--qing)}
+.migrationList{display:grid;gap:10px;margin:14px 0 18px}
+.migrationStep{display:grid;grid-template-columns:34px 1fr auto;gap:12px;align-items:center;
+  border:1px solid var(--line);background:var(--sheet);padding:12px 14px}
+.migrationStep .num{width:30px;height:30px;border:1px solid var(--zhu);color:var(--zhu);
+  display:flex;align-items:center;justify-content:center;font:700 14px var(--serif)}
+.migrationStep.finished .num{border-color:var(--qing);color:var(--qing)}
+.migrationStep b{display:block;font:600 14px/1.5 var(--serif)}
+.migrationStep span{display:block;color:var(--dim);font-size:12.5px;margin-top:2px}
+.cleanupPreview{border:1px solid var(--line2);background:#F8F6F0;padding:14px 15px;margin:0 0 14px}
+.cleanupPreview h3{margin:0 0 8px;font:600 15px var(--serif)}
+.cleanupRows{display:grid;gap:6px;max-height:180px;overflow:auto;margin:8px 0 12px}
+.cleanupRow{display:grid;grid-template-columns:auto 1fr;gap:8px;align-items:start;font-size:12.5px;
+  padding:7px 8px;background:var(--sheet);border:1px solid var(--line)}
+.cleanupRow i{font-style:normal;color:var(--zhu)}
+.cleanupRow.found i{color:var(--qing)}
+.cleanupRow code{background:transparent;padding:0;word-break:break-all;color:var(--faint)}
+.cleanupResult{font-size:13px;color:var(--ink2);margin:8px 0 0}
+.uninstallBox{border-top:1px solid var(--ink);padding-top:15px;margin-top:4px}
+.uninstallBox h3{margin:0 0 8px;font:600 16px var(--serif)}
+.uninstallBox ol{margin:0 0 12px;padding-left:20px;color:var(--ink2);font-size:13px}
+.uninstallBox code{display:block;background:#ECEAE4;padding:9px 10px;white-space:pre-wrap;margin:8px 0 12px}
+@media(max-width:680px){
+  .cloudMask{padding:10px;align-items:flex-start}
+  .cloudSheet{padding:20px 16px 18px;max-height:calc(100vh - 20px)}
+  .cloudSheet h2{font-size:21px;padding-right:28px}
+  .cloudPoints{grid-template-columns:1fr}
+  .migrationStep{grid-template-columns:30px 1fr}
+  .migrationStep .btn{grid-column:2;justify-self:start}
+  .cloudNoMore{margin-left:0;width:100%}
+}
 </style>
 </head>
 <body>
@@ -660,6 +711,7 @@ body{font:14px/1.7 var(--sans)}
     <div class="slinks">
       <button class="lk" id="bPause">暂停队列</button>
       <button class="lk" id="bFeedback" title="打包日志发给作者">反馈</button>
+      <button class="lk" id="bCloudHelp" title="云端使用与卸载帮助">云端 / 卸载</button>
       <button class="lk" id="bReload">刷新</button>
     </div>
   </div>
@@ -958,6 +1010,70 @@ body{font:14px/1.7 var(--sans)}
   </div>
 </div>
 
+<div class="cloudMask" id="annMask" hidden>
+  <section class="cloudSheet" role="dialog" aria-modal="true" aria-labelledby="annTitle">
+    <button class="cloudClose" id="annClose" aria-label="关闭公告">×</button>
+    <div class="cloudKicker">半瓢 · 0.2.78</div>
+    <h2 id="annTitle">客户端可以继续用，云端入口也已经准备好</h2>
+    <p class="cloudLead">这是一轮路线升级。想继续用电脑里的半瓢没问题；如果以后不再安装客户端，也可以直接使用云端。</p>
+    <div class="cloudPoints">
+      <div class="cloudPoint"><b>客户端</b><span>原有客户端可以继续使用。升级后如果不需要了，可以按向导卸载。</span></div>
+      <div class="cloudPoint"><b>半瓢服务</b><span>今后「半瓢」的服务不再需要安装客户端，直接使用云端即可。</span></div>
+      <div class="cloudPoint"><b>后续开源</b><span>等服务端稳定以后会继续开源，允许大家用这套方案自己架设服务器。</span></div>
+      <div class="cloudPoint"><b>竹林会员</b><span>「竹林会员」是免费的；我这边提供免费生图。</span></div>
+    </div>
+    <div class="cloudActions">
+      <a class="btn pri" href="https://hezhuzi.com/bp/" target="_blank" rel="noopener">去半瓢云端</a>
+      <button class="btn zhu" id="annWizard">查看迁移与卸载</button>
+      <label class="cloudNoMore"><input type="checkbox" id="annNoMore">以后不再提示</label>
+    </div>
+  </section>
+</div>
+
+<div class="cloudMask" id="cloudMask" hidden>
+  <section class="cloudSheet wide" role="dialog" aria-modal="true" aria-labelledby="cloudTitle">
+    <button class="cloudClose" id="cloudClose" aria-label="关闭帮助">×</button>
+    <div class="cloudKicker">迁移向导</div>
+    <h2 id="cloudTitle">逐项确认，再决定要不要卸载</h2>
+    <p class="cloudLead">下面每一步都会先列出将处理的位置，点确认后才执行。所有步骤都可以单独做，也可以重复检查。</p>
+
+    <div class="migrationList">
+      <div class="migrationStep" data-step="ai">
+        <div class="num">一</div>
+        <div><b>清理 AI 工具里的半瓢说明</b><span>只移除半瓢标记块、<code>skills/bampiao</code> 和确认由半瓢创建的 CLI 软链；安装备份在用户原文逐字节复原后才删。</span></div>
+        <button class="btn sm" data-clean="ai">查看并确认</button>
+      </div>
+      <div class="migrationStep" data-step="autostart">
+        <div class="num">二</div>
+        <div><b>移除开机自启与残留计划任务</b><span>检查半瓢 Run 项、网关、看门狗、反馈哨兵和 macOS LaunchAgent。</span></div>
+        <button class="btn sm" data-clean="autostart">查看并确认</button>
+      </div>
+      <div class="migrationStep" data-step="process">
+        <div class="num">三</div>
+        <div><b>停止半瓢与账号专用浏览器</b><span>会请求半瓢退出，并收掉它启动的浏览器进程。</span></div>
+        <button class="btn sm" data-clean="process">查看并确认</button>
+      </div>
+    </div>
+
+    <div class="cleanupPreview" id="cleanupPreview" hidden>
+      <h3 id="cleanupPreviewTitle">清理清单</h3>
+      <p class="muted" id="cleanupPreviewNote"></p>
+      <div class="cleanupRows" id="cleanupRows"></div>
+      <button class="btn zhu" id="cleanupConfirm">确认处理这一项</button>
+      <div class="cleanupResult" id="cleanupResult" hidden></div>
+    </div>
+
+    <div class="uninstallBox">
+      <h3>最后卸载客户端</h3>
+      <ol id="uninstallSteps"></ol>
+      <button class="btn" id="uninstallOpen" hidden>打开“应用和功能”</button>
+      <button class="btn sm" id="uninstallCopy" hidden>复制清理命令</button>
+      <code id="uninstallCommand" hidden></code>
+      <p class="hint">卸载前请先确认账号与图片是否要留一份；这一步不会替你导出数据。</p>
+    </div>
+  </section>
+</div>
+
 <aside class="drawer" id="drawer" role="dialog" aria-modal="true" aria-labelledby="dTitle">
   <div class="dh"><span class="id" id="dTitle">R–</span><span id="dStatus"></span>
     <button class="btn sm" style="margin-left:auto" id="dSaveAll" hidden>全部保存</button>
@@ -984,7 +1100,8 @@ const S={tab:'jobs',offset:0,limit:24,status:'all',account:'all',tag:'all',q:'',
          kind:'image',       // 默认看出图；文本是另一个 tab（用户 2026-11-06 定）
          lbList:[],lbIdx:0,cur:null,paused:false,chats:[],running:0,accName:{},hover:false,
          pendingNew:null,view:'ledger',attn:{count:0,by_class:{},jobs:[],total_jobs:0,by_kind:{}},
-         sel:new Set(),rows:[]};
+         sel:new Set(),rows:[],announcement:null,annShown:false,cleanupGroup:'',
+         cleanupPlans:{},uninstallHelp:null};
 const esc=s=>String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 // 真窗口（WebView2）里 navigator.clipboard 可能被拒；退成 execCommand，
 // 两条都不行再让用户手动选中（2026-11-06 复评提到复制可能不可用）。
@@ -1044,6 +1161,140 @@ function toast(m){const el=$('#toast');el.textContent=m;el.classList.add('on');
   clearTimeout(el._t);el._t=setTimeout(()=>el.classList.remove('on'),2800)}
 const post=body=>j('/api/action',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
 
+function maybeShowAnnouncement(){
+  if(!S.announcement || !S.announcement.show || S.annShown) return;
+  S.annShown=true;
+  $('#annNoMore').checked=false;
+  $('#annMask').hidden=false;
+  setTimeout(()=>$('#annClose').focus(),30);
+}
+function dismissAnnouncement(){
+  if($('#annNoMore').checked) post({do:'announcement_0_2_78_dismiss'}).catch(()=>{});
+  $('#annMask').hidden=true;
+}
+function openCloudHelp(){
+  $('#cloudMask').hidden=false;
+  loadUninstallHelp();
+  setTimeout(()=>$('#cloudClose').focus(),30);
+}
+function closeCloudHelp(){
+  $('#cloudMask').hidden=true;
+}
+async function loadUninstallHelp(){
+  if(S.uninstallHelp) return;
+  try{
+    const r=await post({do:'uninstall_help'});
+    if(!r.ok) return;
+    S.uninstallHelp=r;
+    $('#uninstallSteps').innerHTML=(r.steps||[]).map(x=>'<li>'+esc(x)+'</li>').join('');
+    const win=r.platform==='windows';
+    $('#uninstallOpen').hidden=!win;
+    $('#uninstallCopy').hidden=win;
+    $('#uninstallCommand').hidden=win;
+    $('#uninstallCommand').textContent=r.command||'';
+  }catch(e){ toast(e.message||'读取卸载说明失败'); }
+}
+function cleanupRows(actions){
+  return actions.map(a=>{
+    const found=!!a.present;
+    return '<div class="cleanupRow '+(found?'found':'')+'"><i>'+(found?'将处理':'无此项')+'</i>'
+      +'<div><b>'+esc(a.label)+'</b><br><code>'+esc(a.path||'')+'</code>'
+      +(a.detail?'<br><span class="muted">'+esc(a.detail)+'</span>':'')+'</div></div>';
+  }).join('');
+}
+async function prepareCleanup(group){
+  S.cleanupGroup=group;
+  const btn=document.querySelector('[data-clean="'+group+'"]');
+  const old=btn?btn.textContent:'';
+  if(btn){ btn.disabled=true; btn.textContent='正在列清单…'; }
+  try{
+    const all=await post({do:'cleanup_plan'});
+    if(!all.ok) throw new Error(all.why||'清单读取失败');
+    S.cleanupPlans[group]=all;
+    const rows=(all.actions||[]).filter(a=>a.group===group);
+    const found=rows.filter(a=>a.present).length;
+    const title={ai:'AI 工具说明清单',autostart:'开机自启清单',process:'运行进程清单'}[group]||'清理清单';
+    $('#cleanupPreview').hidden=false;
+    $('#cleanupPreviewTitle').textContent=title;
+    $('#cleanupPreviewNote').textContent=found
+      ? '发现 '+found+' 项。下面就是确认后会处理的位置。'
+      : '这次没有发现需要处理的项。';
+    $('#cleanupRows').innerHTML=cleanupRows(rows);
+    const confirm=$('#cleanupConfirm');
+    confirm.disabled=!found;
+    confirm.textContent=found
+      ? (group==='process'?'确认停止这些进程':'确认处理这一项')
+      : '没有需要处理的项';
+    $('#cleanupResult').hidden=true;
+    $('#cleanupPreview').scrollIntoView({block:'nearest'});
+    if(group==='process' && found){
+      $('#cleanupPreviewNote').textContent='发现 '+found+' 项。确认后半瓢会退出，当前清理页面也会关闭。';
+    }
+  }catch(e){
+    toast(e.message||'清单读取失败');
+  }finally{
+    if(btn){ btn.disabled=false; btn.textContent=old; }
+  }
+}
+async function confirmCleanup(){
+  const group=S.cleanupGroup;
+  if(!group) return;
+  const btn=$('#cleanupConfirm');
+  let completed=false;
+  btn.disabled=true;
+  btn.textContent='正在处理…';
+  try{
+    const r=await post({do:'cleanup_run',group});
+    const result=$('#cleanupResult');
+    result.hidden=false;
+    result.textContent=r.ok
+      ? (r.changed?'这一项已处理。可以重复点，重复执行不会多删东西。':'这一项没有需要改动的内容。')
+      : ('有项目没处理成功：'+((r.failures||[]).join('；')||'原因不明'));
+    if(r.ok){
+      completed=true;
+      const card=document.querySelector('.migrationStep[data-step="'+group+'"]');
+      if(card) card.classList.add('finished');
+      const all=await post({do:'cleanup_plan'});
+      if(all.ok) S.cleanupPlans[group]=all;
+      prepareCleanup(group);
+      $('#cleanupResult').hidden=false;
+      $('#cleanupResult').textContent='这一项已处理。清单已重新读取。';
+    }
+  }catch(e){
+    const result=$('#cleanupResult');
+    result.hidden=false;
+    result.textContent=e.message||'处理失败';
+  }finally{
+    const rows=((S.cleanupPlans[group]||{}).actions||[]).filter(a=>a.group===group&&a.present);
+    btn.disabled=completed && !rows.length;
+    btn.textContent=rows.length
+      ? (group==='process'?'确认停止这些进程':'确认处理这一项')
+      : '没有需要处理的项';
+  }
+}
+
+$('#bCloudHelp').onclick=openCloudHelp;
+$('#annClose').onclick=dismissAnnouncement;
+$('#annWizard').onclick=()=>{ dismissAnnouncement(); openCloudHelp(); };
+$('#cloudClose').onclick=closeCloudHelp;
+$$('[data-clean]').forEach(b=>b.onclick=()=>prepareCleanup(b.dataset.clean));
+$('#cleanupConfirm').onclick=confirmCleanup;
+$('#uninstallOpen').onclick=async()=>{
+  const r=await post({do:'uninstall_open'}).catch(e=>({ok:false,why:e.message}));
+  toast(r.ok?'已打开“应用和功能”':(r.why||'打不开'));
+};
+$('#uninstallCopy').onclick=async()=>{
+  const ok=await copyText(($('#uninstallCommand').textContent||'').trim());
+  toast(ok?'清理命令已复制':'复制失败，请手动选择命令');
+};
+$('#annMask').onclick=e=>{ if(e.target===$('#annMask')) dismissAnnouncement(); };
+$('#cloudMask').onclick=e=>{ if(e.target===$('#cloudMask')) closeCloudHelp(); };
+document.addEventListener('keydown',e=>{
+  if(e.key!=='Escape') return;
+  if(!$('#cloudMask').hidden){ closeCloudHelp(); return; }
+  if(!$('#annMask').hidden) dismissAnnouncement();
+});
+
 async function loadOverview(){
   const d=await j('/api/overview');
   $('#ver').textContent='v'+(d.version||'');
@@ -1062,6 +1313,8 @@ async function loadOverview(){
   paintUpdate(S.update);
   S.dataDir=d.data_dir||'';
   S.onboarded=!!d.onboarded;
+  S.announcement=d.announcement||null;
+  maybeShowAnnouncement();
   S.summary=d.summary||{};
   S.attn=d.attention||{count:0,by_class:{},jobs:[],total_jobs:0,by_kind:{}};
   renderAttention();

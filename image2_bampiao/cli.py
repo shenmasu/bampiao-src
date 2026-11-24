@@ -247,6 +247,28 @@ def skill_targets() -> dict:
     return {k: Path.home() / rel for k, rel in _SKILL_TARGETS.items()}
 
 
+def cleanup_skill_targets() -> dict:
+    """清理时需要检查的 ``skills/bampiao`` 目录。
+
+    安装入口过去只覆盖 WorkBuddy / Hermes / 通用 Agent；用户可能也手工把同一套
+    skill 放进了其他 Agent 的技能目录。清单一律固定在 ``*/skills/bampiao``，
+    不扫描父目录，也不会碰同级的其他技能。
+    """
+    home = Path.home()
+    out = {
+        "claude": home / ".claude" / "skills" / "bampiao",
+        "codex": home / ".codex" / "skills" / "bampiao",
+        "opencode": home / ".config" / "opencode" / "skills" / "bampiao",
+        "gemini": home / ".gemini" / "skills" / "bampiao",
+        "dsh": _dsh_root() / "skills" / "bampiao",
+        "qwen": home / ".qwen" / "skills" / "bampiao",
+        "windsurf": home / ".codeium" / "windsurf" / "skills" / "bampiao",
+    }
+    for name, skill_file in skill_targets().items():
+        out[name] = skill_file.parent
+    return out
+
+
 def _ensure_cli_shim(dirs: list[str] | None = None) -> str:
     """macOS 上把 bampiao 放进 PATH，返回建好的软链路径（没建就返回空串）。
 
@@ -441,13 +463,22 @@ def _write_text(path: Path, text: str) -> None:
             os.chmod(path, 0o644)
     except OSError:
         pass                     # 改不动就照写，让上层报出真实的错
-    path.write_text(text, encoding="utf-8")
+    import io
+
+    with io.open(path, "w", encoding="utf-8", newline="") as f:
+        f.write(text)
+
+
+def _read_text_exact(path: Path) -> str:
+    """UTF-8 原样读，不把 CRLF/LF 悄悄换掉。"""
+    import io
+
+    with io.open(path, "r", encoding="utf-8", newline="") as f:
+        return f.read()
 
 
 def install_global(target: str, remove: bool = False) -> dict:
     """把「出图用半瓢」写进（或移出）某个 AI 的全局说明。只动自己那一段，别的一个字不碰。"""
-    import re
-
     path, mode = _target_path(target)
     if path is None:
         return {"ok": False, "why": "不认识 %s" % target}
@@ -462,14 +493,11 @@ def install_global(target: str, remove: bool = False) -> dict:
         _write_text(path, skill_text("skill").rstrip() + "\n")
         return {"ok": True, "path": str(path), "removed": False}
 
-    old = path.read_text(encoding="utf-8") if path.exists() else ""
-    pat = re.compile(re.escape(_GLOBAL_BEGIN) + r".*?" + re.escape(_GLOBAL_END) + r"\n?", re.S)
-    body = pat.sub("", old).rstrip()
+    old = _read_text_exact(path) if path.exists() else ""
+    body, _existing = _strip_bampiao_blocks(old)
     if not remove:
         block = "%s\n## 出图用半瓢\n\n%s\n%s\n" % (_GLOBAL_BEGIN, skill_text("paste").rstrip(), _GLOBAL_END)
         body = (body + "\n\n" if body else "") + block
-    elif body:
-        body += "\n"
     path.parent.mkdir(parents=True, exist_ok=True)
     bak = path.with_name(path.name + ".bampiao-bak")
     if old and not bak.exists():
@@ -517,6 +545,494 @@ def refresh_installed_skills() -> list[str]:
         except Exception:
             continue
     return refreshed
+
+
+_BAMPIAO_BLOCK_RE = None
+
+
+def _strip_bampiao_blocks(text: str) -> tuple[str, int]:
+    """只移除半瓢自己写入的标记块和安装时附带的换行。
+
+    标记以外的文本保持原样。兼容历史上 begin 注释文案略有变化的情况，但起止
+    标记名称必须同时出现，半个标记不会触发删除。
+    """
+    import re
+
+    global _BAMPIAO_BLOCK_RE
+    if _BAMPIAO_BLOCK_RE is None:
+        _BAMPIAO_BLOCK_RE = re.compile(
+            r"<!--\s*bampiao:begin(?:\s+[^\r\n]*)?-->"
+            r".*?"
+            r"<!--\s*bampiao:end\s*-->",
+            re.S)
+    chunks: list[str] = []
+    pos = 0
+    count = 0
+    for match in _BAMPIAO_BLOCK_RE.finditer(text):
+        start, end = match.span()
+        # install 时在标记块前固定补了两个换行；只在它们确实紧贴标记时收回。
+        if text[max(0, start - 2):start] == "\r\n":
+            start -= 2
+        elif start >= 2 and text[start - 2:start] == "\n\n":
+            start -= 2
+        elif start >= 1 and text[start - 1] == "\n":
+            start -= 1
+        # install 时标记块末尾固定补一个换行；仅有块尾换行且文件结束才收回。
+        if text[end:] in ("\n", "\r\n"):
+            end = len(text)
+        chunks.append(text[pos:start])
+        pos = end
+        count += 1
+    if not count:
+        return text, 0
+    chunks.append(text[pos:])
+    return "".join(chunks), count
+
+
+def _cleanup_linklike(path: Path) -> bool:
+    try:
+        if path.is_symlink():
+            return True
+    except OSError:
+        pass
+    try:
+        is_junction = getattr(path, "is_junction", None)
+        return bool(is_junction and is_junction())
+    except OSError:
+        return False
+
+
+def _cleanup_path_present(path: Path) -> bool:
+    try:
+        return path.exists() or _cleanup_linklike(path)
+    except OSError:
+        return False
+
+
+def _cleanup_backup_target(source: Path, root: Path, group: str, key: str) -> Path:
+    """把即将改动或删除的半瓢文件复制到 cleanup 备份目录。"""
+    import shutil
+
+    dest = root / group / key / source.name
+    n = 2
+    while dest.exists():
+        dest = root / group / key / ("%s-%d" % (source.name, n))
+        n += 1
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    if source.is_dir() and not _cleanup_linklike(source):
+        shutil.copytree(source, dest, symlinks=True)
+    else:
+        shutil.copy2(source, dest)
+    return dest
+
+
+def _cleanup_remove_skill_dir(path: Path) -> None:
+    """删除技能目录本体；符号链接和 junction 只摘链接，不跟随目标。"""
+    import shutil
+
+    if _cleanup_linklike(path):
+        try:
+            os.rmdir(path)
+        except OSError:
+            path.unlink()
+        return
+    shutil.rmtree(path)
+
+
+def _cleanup_cli_shim_paths() -> list[Path]:
+    """清理只检查半瓢可能创建的两个固定 CLI shim 位置。"""
+    if sys.platform != "darwin":
+        return []
+    return [
+        Path("/usr/local/bin/bampiao"),
+        Path.home() / ".local" / "bin" / "bampiao",
+    ]
+
+
+def _cleanup_cli_shim_owned(path: Path) -> bool:
+    """只有链接目标确实指向当前半瓢可执行文件时，才认作自己的 shim。"""
+    if not _cleanup_linklike(path):
+        return False
+    exe = _exe_hint()
+    if not exe.startswith("/"):
+        return False
+    try:
+        return os.path.realpath(path) == os.path.realpath(exe)
+    except OSError:
+        return False
+
+
+def _cleanup_cli_shims() -> list[dict]:
+    """列出实际存在的 Mac CLI shim，并标出能否安全删除。"""
+    rows: list[dict] = []
+    for path in _cleanup_cli_shim_paths():
+        if not _cleanup_path_present(path):
+            continue
+        owned = _cleanup_cli_shim_owned(path)
+        rows.append({
+            "path": path,
+            "owned": owned,
+            "detail": "" if owned else "同名文件或链接目标不属于当前半瓢，未自动处理",
+        })
+    return rows
+
+
+def _cleanup_global_backup_path(path: Path) -> Path:
+    return path.with_name(path.name + ".bampiao-bak")
+
+
+def _cleanup_global_backup_safe(path: Path) -> bool:
+    """安装备份只有与当前用户说明逐字节一致时，才允许删除。"""
+    suffix = ".bampiao-bak"
+    if not path.name.endswith(suffix) or _cleanup_linklike(path):
+        return False
+    source = path.with_name(path.name[:-len(suffix)])
+    try:
+        return source.is_file() and path.is_file() and path.read_bytes() == source.read_bytes()
+    except OSError:
+        return False
+
+
+def _cleanup_runtime_targets(
+        data_dir: Path, config_path: str | Path | None = None) -> list[dict]:
+    """只读盘点当前运行中的半瓢和账号专用浏览器。"""
+    from . import platform as plat
+
+    rows: list[dict] = []
+    pids: set[int] = set()
+    try:
+        runtime = json.loads(
+            (data_dir / "state" / "runtime.json").read_text(encoding="utf-8"))
+        pid = int((runtime.get("panel") or {}).get("pid") or 0)
+        if pid and plat.pid_alive(pid):
+            pids.add(pid)
+    except (OSError, ValueError, TypeError, json.JSONDecodeError):
+        pass
+
+    try:
+        base = _install_dir()
+        if base is not None:
+            pids.update(plat.find_pids_by_exe(base))
+    except Exception:
+        pass
+    for pid in sorted(pids):
+        rows.append({
+            "group": "process", "key": "app-%d" % pid,
+            "label": "运行中的半瓢", "path": "pid %d" % pid,
+            "kind": "app", "present": True,
+        })
+
+    try:
+        cfg = cfg_mod.load(config_path, missing_ok=True)
+    except Exception:
+        cfg = None
+    if cfg is not None:
+        for acc in cfg.accounts:
+            try:
+                bpids = plat.find_pids_with(str(acc.profile))
+            except Exception:
+                bpids = []
+            if bpids:
+                rows.append({
+                    "group": "process", "key": "browser-%s" % acc.id,
+                    "label": "账号专用浏览器：%s" % acc.name,
+                    "path": "pid %s" % ", ".join(map(str, bpids)),
+                    "kind": "browser", "present": True,
+                })
+    return rows
+
+
+def _cleanup_stop_processes(config_path: str | Path | None = None) -> dict:
+    """先走现有 quit 通道；浏览器没随桌面壳退出时再逐个复用 browser.stop。"""
+    from . import desktop
+
+    notes: list[str] = []
+    failed = False
+    ok, msg = desktop.send_command("quit", wait=20)
+    notes.append(msg)
+
+    cfg = None
+    try:
+        cfg = cfg_mod.load(config_path, missing_ok=True)
+    except Exception:
+        pass
+    if cfg is not None:
+        from .driver import browser as br
+
+        for acc in cfg.accounts:
+            try:
+                stopped, note = br.stop(cfg, acc)
+                if stopped:
+                    notes.append("%s：%s" % (acc.name, note))
+                else:
+                    failed = True
+                    notes.append("%s：未停止（%s）" % (acc.name, note or "原因不明"))
+            except Exception as e:
+                failed = True
+                notes.append("%s：%s" % (acc.name, e))
+
+    left = quit_leftovers()
+    if left:
+        notes.append("收掉 %d 个残留半瓢进程" % left)
+    return {"ok": not failed, "notes": notes}
+
+
+def cleanup_plan(*, data_dir: Path | None = None,
+                 config_path: str | Path | None = None,
+                 groups: list[str] | None = None) -> dict:
+    """只读列出迁移清理会碰到的全部位置。"""
+    from . import autostart as auto
+
+    want = set(groups or ("ai", "autostart", "process"))
+    root = Path(data_dir) if data_dir is not None else paths.data_dir()
+    rows: list[dict] = []
+
+    if "ai" in want:
+        for name, path in global_targets().items():
+            try:
+                text = _read_text_exact(path) if path.is_file() else ""
+            except (OSError, UnicodeDecodeError):
+                text = ""
+            restored, count = _strip_bampiao_blocks(text)
+            rows.append({
+                "group": "ai", "key": "global-%s" % name,
+                "label": "AI 全局说明：%s" % name, "path": str(path),
+                "kind": "global", "present": count > 0,
+                "count": count,
+            })
+            bak = _cleanup_global_backup_path(path)
+            if _cleanup_path_present(bak):
+                try:
+                    safe = (
+                        not _cleanup_linklike(bak)
+                        and bak.is_file()
+                        and bak.read_bytes() == restored.encode("utf-8")
+                    )
+                except (OSError, UnicodeEncodeError):
+                    safe = False
+                rows.append({
+                    "group": "ai", "key": "global-backup-%s" % name,
+                    "label": "半瓢安装备份：%s" % name, "path": str(bak),
+                    "kind": "global-backup", "present": True, "safe": safe,
+                    "detail": "" if safe else "备份与可恢复的用户原文不一致，未自动处理",
+                })
+        for name, path in cleanup_skill_targets().items():
+            rows.append({
+                "group": "ai", "key": "skill-%s" % name,
+                "label": "Agent 技能目录：%s" % name, "path": str(path),
+                "kind": "skill", "present": _cleanup_path_present(path),
+                "junction": _cleanup_linklike(path) if _cleanup_path_present(path) else False,
+            })
+        for index, item in enumerate(_cleanup_cli_shims(), 1):
+            rows.append({
+                "group": "ai", "key": "cli-shim-%d" % index,
+                "label": "命令行入口：bampiao", "path": str(item["path"]),
+                "kind": "cli-shim", "present": True,
+                "safe": bool(item["owned"]), "detail": item["detail"],
+            })
+
+    if "autostart" in want:
+        for item in auto.inspect_cleanup_targets():
+            rows.append({
+                "group": "autostart",
+                "key": "autostart-%s-%s" % (item["kind"], item["name"]),
+                "label": {
+                    "run": "开机自启：%s",
+                    "task": "计划任务：%s",
+                    "launchagent": "LaunchAgent：%s",
+                }.get(item["kind"], "自启：%s") % item["name"],
+                "path": item["path"], "kind": item["kind"],
+                "present": bool(item["present"]),
+            })
+
+    if "process" in want:
+        rows.extend(_cleanup_runtime_targets(root, config_path=config_path))
+
+    return {
+        "schema_version": 1,
+        "ok": True,
+        "dry_run": True,
+        "data_dir": str(root),
+        "groups": sorted(want),
+        "actions": rows,
+        "present": sum(1 for row in rows if row["present"]),
+    }
+
+
+def run_cleanup(*, dry_run: bool = False,
+                groups: list[str] | None = None,
+                config_path: str | Path | None = None,
+                data_dir: Path | None = None) -> dict:
+    """执行或预演迁移清理；任何一项失败都不影响其余项继续。"""
+    from . import autostart as auto
+
+    plan = cleanup_plan(data_dir=data_dir, config_path=config_path, groups=groups)
+    actions = [dict(row, status="would_remove" if row["present"] else "absent")
+               for row in plan["actions"]]
+    if dry_run:
+        return {**plan, "actions": actions, "changed": False, "backup_dir": ""}
+
+    root = Path(plan["data_dir"])
+    backup_dir = root / "backups" / time.strftime("cleanup-%Y%m%d-%H%M%S")
+    n = 2
+    while backup_dir.exists():
+        backup_dir = root / "backups" / (
+            time.strftime("cleanup-%Y%m%d-%H%M%S") + "-%d" % n)
+        n += 1
+    backed_up: list[str] = []
+    failures: list[str] = []
+    changed = False
+
+    for action in actions:
+        if not action["present"]:
+            continue
+        group = action["group"]
+        path = Path(action["path"]) if group == "ai" else None
+        try:
+            if group == "ai" and action["kind"] == "global" and path is not None:
+                old = _read_text_exact(path)
+                new, count = _strip_bampiao_blocks(old)
+                if count:
+                    bk = _cleanup_backup_target(path, backup_dir, "global", action["key"])
+                    backed_up.append(str(bk))
+                    _write_text(path, new)
+                    action["status"] = "removed" if not _strip_bampiao_blocks(new)[1] else "failed"
+                    changed = True
+                else:
+                    action["status"] = "absent"
+            elif group == "ai" and action["kind"] == "skill" and path is not None:
+                if _cleanup_linklike(path):
+                    _cleanup_remove_skill_dir(path)
+                    action["status"] = "removed"
+                    action["detail"] = "只移除 junction/符号链接，目标内容未跟随删除"
+                else:
+                    bk = _cleanup_backup_target(path, backup_dir, "skills", action["key"])
+                    backed_up.append(str(bk))
+                    _cleanup_remove_skill_dir(path)
+                    action["status"] = "removed"
+                changed = True
+            elif group == "ai" and action["kind"] == "global-backup" and path is not None:
+                if not _cleanup_global_backup_safe(path):
+                    raise RuntimeError("安装备份与当前用户原文不一致，未删除")
+                bk = _cleanup_backup_target(path, backup_dir, "global", action["key"])
+                backed_up.append(str(bk))
+                path.unlink()
+                action["status"] = "removed"
+                changed = True
+            elif group == "ai" and action["kind"] == "cli-shim" and path is not None:
+                if not _cleanup_cli_shim_owned(path):
+                    raise RuntimeError("同名文件或链接目标不属于当前半瓢，未删除")
+                path.unlink()
+                action["status"] = "removed"
+                changed = True
+        except Exception as e:
+            action["status"] = "failed"
+            action["detail"] = "%s: %s" % (type(e).__name__, e)
+            failures.append("%s：%s" % (action["label"], action["detail"]))
+
+    if "autostart" in set(plan["groups"]):
+        auto_result = auto.remove_all(dry_run=False)
+
+        def matches_auto(action: dict, name: str) -> bool:
+            return (
+                action["group"] == "autostart"
+                and (
+                    action["path"] == name
+                    or Path(action["path"]).name == name
+                    or (action["kind"] == "run" and name == auto.VALUE_NAME)
+                    or (action["kind"] == "launchagent" and name == auto.MAC_LABEL)
+                )
+            )
+
+        for name in auto_result.get("removed", []):
+            changed = True
+            for action in actions:
+                if matches_auto(action, name):
+                    action["status"] = "removed"
+        for name in auto_result.get("failed", []):
+            failures.append("自启项移除失败：%s" % name)
+            for action in actions:
+                if matches_auto(action, name):
+                    action["status"] = "failed"
+        for item in auto_result.get("remaining", []):
+            name = str(item.get("name") or "")
+            related = [a for a in actions if a["present"] and matches_auto(a, name)]
+            for action in related:
+                if action["status"] != "removed":
+                    action["status"] = "failed"
+                    failures.append("自启项仍在：%s" % action["label"])
+
+    if "process" in set(plan["groups"]):
+        stop = _cleanup_stop_processes(config_path=config_path)
+        for action in actions:
+            if action["group"] == "process" and action["present"]:
+                action["status"] = "stopped" if stop["ok"] else "failed"
+                action["detail"] = "；".join(stop["notes"])
+        if not stop["ok"]:
+            failures.extend(stop["notes"])
+        elif any(a["group"] == "process" and a["present"] for a in actions):
+            changed = True
+
+    if backup_dir.exists():
+        manifest = {
+            "created_at": time.strftime("%Y-%m-%dT%H:%M:%S%z"),
+            "backups": backed_up,
+        }
+        backup_dir.mkdir(parents=True, exist_ok=True)
+        (backup_dir / "manifest.json").write_text(
+            json.dumps(manifest, ensure_ascii=False, indent=1), encoding="utf-8")
+
+    return {
+        **plan,
+        "ok": not failures,
+        "dry_run": False,
+        "actions": actions,
+        "changed": changed,
+        "backup_dir": str(backup_dir) if backup_dir.exists() else "",
+        "failures": failures,
+    }
+
+
+def cleanup_uninstall_help() -> dict:
+    """给面板和公告复用的卸载说明，不改系统。"""
+    if sys.platform == "darwin":
+        import shlex
+
+        app_cli = shlex.quote(_exe_hint())
+        return {
+            "platform": "mac",
+            "steps": [
+                "先在迁移向导里执行第 1 步清理；它会移除半瓢创建的 CLI 软链，"
+                "并在用户原文逐字节恢复后删除对应的 *.bampiao-bak 安装备份。",
+                "把「半瓢」从“应用程序”拖进废纸篓。",
+                "删除 ~/Library/Application Support/Bampiao。",
+                "删除 ~/Library/LaunchAgents/com.hezhuzi.bampiao.plist（如果存在）。",
+                "如果 ~/.local/bin/bampiao 或 /usr/local/bin/bampiao 仍存在，"
+                "只在 readlink 指向当前半瓢 .app 时删除。",
+            ],
+            "command": (
+                "APP_CLI=%s\n"
+                "if [ -L \"$HOME/.local/bin/bampiao\" ] && "
+                "[ \"$(readlink \"$HOME/.local/bin/bampiao\")\" = \"$APP_CLI\" ]; then\n"
+                "  rm -f \"$HOME/.local/bin/bampiao\"\n"
+                "fi\n"
+                "if [ -L \"/usr/local/bin/bampiao\" ] && "
+                "[ \"$(readlink \"/usr/local/bin/bampiao\")\" = \"$APP_CLI\" ]; then\n"
+                "  sudo rm -f \"/usr/local/bin/bampiao\"\n"
+                "fi\n"
+                "rm -rf \"$HOME/Library/Application Support/Bampiao\"\n"
+                "rm -f \"$HOME/Library/LaunchAgents/com.hezhuzi.bampiao.plist\""
+            ) % app_cli,
+        }
+    return {
+        "platform": "windows",
+        "steps": [
+            "打开“设置 → 应用 → 已安装的应用”。",
+            "搜索“半瓢”，打开右侧菜单，点“卸载”。",
+            "按卸载器提示操作；账号与图片不会自动导出。",
+        ],
+        "command": "bampiao cleanup --dry-run",
+    }
 
 
 def cmd_skill(a) -> int:
@@ -2493,6 +3009,49 @@ def cmd_autostart(a) -> int:
         return EXIT_ACTION
 
 
+def cmd_cleanup(a) -> int:
+    """为迁移到云端提供可预演、可重复执行的桌面清理。"""
+    try:
+        cfg = cfg_mod.load(a.config, missing_ok=True)
+        data_dir = Path(cfg.data_dir) if cfg is not None else paths.data_dir()
+        result = run_cleanup(dry_run=bool(a.dry_run), config_path=a.config,
+                             data_dir=data_dir)
+    except Exception as e:
+        if getattr(a, "json", False):
+            _emit({"schema_version": 1, "ok": False,
+                   "error_code": "INTERNAL", "why": "%s: %s" % (type(e).__name__, e)})
+        elif not getattr(a, "silent", False):
+            _err("清理失败：%s: %s" % (type(e).__name__, e))
+        return EXIT_INTERNAL
+
+    if getattr(a, "json", False):
+        _emit(result)
+    elif not getattr(a, "silent", False):
+        title = "将清理" if a.dry_run else "清理结果"
+        print(title + "：%d 项" % result["present"])
+        for row in result["actions"]:
+            if not row["present"]:
+                continue
+            mark = {
+                "would_remove": "将处理",
+                "removed": "已清理",
+                "stopped": "已停止",
+                "failed": "失败",
+            }.get(row["status"], row["status"])
+            print("  [%s] %s" % (mark, row["label"]))
+            if row.get("path"):
+                print("        %s" % row["path"])
+        if not result["present"]:
+            print("  没有发现需要清理的项目")
+        if result.get("backup_dir"):
+            print("备份：%s" % result["backup_dir"])
+        if result.get("failures"):
+            for why in result["failures"]:
+                _err("!! " + why)
+
+    return EXIT_OK if result.get("ok") else EXIT_PARTIAL
+
+
 def cmd_diag(a) -> int:
     """把所有排障信息写成一个文件，交给别人看。
 
@@ -2910,6 +3469,12 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--json", action="store_true")
     p.set_defaults(func=cmd_autostart)
 
+    p = sub.add_parser("cleanup", help="迁移到云端前清理 AI 说明、自启和后台进程")
+    p.add_argument("--dry-run", action="store_true", help="只列清单，不改任何文件和系统设置")
+    p.add_argument("--silent", action="store_true", help="不输出人类可读内容（供卸载器调用）")
+    p.add_argument("--json", action="store_true")
+    p.set_defaults(func=cmd_cleanup)
+
     p = sub.add_parser("diag", help="把排障信息写成一个文件（发给别人看）")
     p.add_argument("--out", help="写到哪（默认桌面 bampiao-diag.txt）")
     p.add_argument("--json", action="store_true")
@@ -3066,7 +3631,7 @@ def main(argv: list[str] | None = None) -> int:
     # 3.4G 数据搬了家，装着的旧版 app 立刻看不到账号——用户只是问了句版本号。
     # 下面 maintenance 那段早就有守卫，这里当初漏了。
     _sub = sys.argv[1] if (argv is None and len(sys.argv) > 1) else ""
-    if _sub not in ("--version", "-V", "--help", "-h", ""):
+    if _sub not in ("--version", "-V", "--help", "-h", "", "cleanup"):
         try:
             _moved = paths.migrate_legacy()
         except Exception:
